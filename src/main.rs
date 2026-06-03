@@ -412,29 +412,45 @@ struct SearchResult {
     repository: String,
 }
 
-fn format_search_box(result: &SearchResult) -> String {
-    let width = 50;
+fn format_search_box(package: &str, result: &SearchResult) -> String {
+    let width = 45;
+    let title = format!("Search: {}", package);
+    let mut title_str = format!(" {} ", title);
+    if title_str.len() > width - 4 {
+        title_str = format!(" {} ", &title[..title.len().saturating_sub(title_str.len() - (width - 4))]);
+    }
+
     let mut box_str = String::new();
 
-    box_str.push_str(&format!("┌{}┐\n", "─".repeat(width - 2)));
-    box_str.push_str(&format!("│ {:<48} │\n", format!("Package: {}", result.name)));
-    box_str.push_str(&format!("│ {:<48} │\n", format!("Version: {}", result.version)));
+    let dashes = "─".repeat(width - title_str.len() - 2);
+    box_str.push_str(&format!("┌{}{}┐\n", title_str, dashes));
+
+    let pkg_line = format!("Package: {}", result.name);
+    box_str.push_str(&format!("│ {:<43} │\n", pkg_line));
+
+    if !result.version.is_empty() {
+        let ver_line = format!("Version: {}", result.version);
+        box_str.push_str(&format!("│ {:<43} │\n", ver_line));
+    }
 
     if !result.repository.is_empty() {
-        box_str.push_str(&format!("│ {:<48} │\n", format!("Repository: {}", result.repository)));
+        let repo_line = format!("Repository: {}", result.repository);
+        box_str.push_str(&format!("│ {:<43} │\n", repo_line));
     }
 
     if !result.size.is_empty() {
-        box_str.push_str(&format!("│ {:<48} │\n", format!("Size: {}", result.size)));
+        let size_line = format!("Size: {}", result.size);
+        box_str.push_str(&format!("│ {:<43} │\n", size_line));
     }
 
     if !result.description.is_empty() {
-        let desc = if result.description.len() > 45 {
-            format!("{}...", &result.description[..42])
+        let desc = if result.description.len() > 40 {
+            format!("{}...", &result.description[..37])
         } else {
             result.description.clone()
         };
-        box_str.push_str(&format!("│ {:<48} │\n", format!("Description: {}", desc)));
+        let desc_line = format!("Description: {}", desc);
+        box_str.push_str(&format!("│ {:<43} │\n", desc_line));
     }
 
     box_str.push_str(&format!("└{}┘\n", "─".repeat(width - 2)));
@@ -529,7 +545,7 @@ fn main() {
         if let Action::SearchFlatpak = action {
             if system == System::Linux {
                 match search_package_flatpak(package) {
-                    Some(result) => println!("{}", format_search_box(&result).bright_cyan()),
+                    Some(result) => println!("{}", format_search_box(package, &result).bright_magenta()),
                     None => println!("{}", format!("{}: Package not found", package).red()),
                 }
             } else {
@@ -541,7 +557,7 @@ fn main() {
                     match detect_linux_package_manager() {
                         Some(manager) => {
                             match search_package_linux(package, &manager) {
-                                Some(result) => println!("{}", format_search_box(&result).bright_cyan()),
+                                Some(result) => println!("{}", format_search_box(package, &result).bright_cyan()),
                                 None => println!("{}", format!("{}: Package not found", package).red()),
                             }
                         }
