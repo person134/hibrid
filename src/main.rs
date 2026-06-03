@@ -179,13 +179,32 @@ fn fuzzy_match_flatpak_with_size(query: &str) -> Option<(String, String)> {
                 }
 
                 if !app_id.is_empty() {
-                    // Return app ID with empty size (flatpak search shows version, not size)
-                    return Some((app_id, String::new()));
+                    // Get size from flatpak info command
+                    let size = get_flatpak_size(&app_id);
+                    return Some((app_id, size));
                 }
             }
             None
         }
         Err(_) => None,
+    }
+}
+
+/// Get download size for a flatpak package
+fn get_flatpak_size(app_id: &str) -> String {
+    match Command::new("flatpak").args(&["info", app_id]).output() {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if line.contains("Download size:") {
+                    if let Some(size) = line.split(':').nth(1) {
+                        return size.trim().to_string();
+                    }
+                }
+            }
+            String::new()
+        }
+        Err(_) => String::new(),
     }
 }
 
