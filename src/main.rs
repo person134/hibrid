@@ -421,36 +421,37 @@ fn format_search_box(package: &str, result: &SearchResult) -> String {
     }
 
     let mut box_str = String::new();
+    let inner_width = width - 4;
 
-    let dashes = "─".repeat(width - title_str.len() - 2);
+    let dashes = "─".repeat(width.saturating_sub(title_str.len() + 2));
     box_str.push_str(&format!("┌{}{}┐\n", title_str, dashes));
 
     let pkg_line = format!("Package: {}", result.name);
-    box_str.push_str(&format!("│ {:<43} │\n", pkg_line));
+    box_str.push_str(&format!("│ {:<width$} │\n", pkg_line, width = inner_width));
 
     if !result.version.is_empty() {
         let ver_line = format!("Version: {}", result.version);
-        box_str.push_str(&format!("│ {:<43} │\n", ver_line));
+        box_str.push_str(&format!("│ {:<width$} │\n", ver_line, width = inner_width));
     }
 
     if !result.repository.is_empty() {
         let repo_line = format!("Repository: {}", result.repository);
-        box_str.push_str(&format!("│ {:<43} │\n", repo_line));
+        box_str.push_str(&format!("│ {:<width$} │\n", repo_line, width = inner_width));
     }
 
     if !result.size.is_empty() {
         let size_line = format!("Size: {}", result.size);
-        box_str.push_str(&format!("│ {:<43} │\n", size_line));
+        box_str.push_str(&format!("│ {:<width$} │\n", size_line, width = inner_width));
     }
 
     if !result.description.is_empty() {
-        let desc = if result.description.len() > 40 {
-            format!("{}...", &result.description[..37])
+        let desc = if result.description.len() > inner_width - 14 {
+            format!("{}...", &result.description[..inner_width - 17])
         } else {
             result.description.clone()
         };
         let desc_line = format!("Description: {}", desc);
-        box_str.push_str(&format!("│ {:<43} │\n", desc_line));
+        box_str.push_str(&format!("│ {:<width$} │\n", desc_line, width = inner_width));
     }
 
     box_str.push_str(&format!("└{}┘\n", "─".repeat(width - 2)));
@@ -465,13 +466,56 @@ fn search_package_linux(package: &str, manager: &PackageManager) -> Option<Searc
         return None;
     }
 
+    let version = extract_version_from_manager(package, manager);
+    let description = extract_description_from_manager(package, manager);
+
     Some(SearchResult {
         name: package.to_string(),
-        version: String::new(),
-        description: String::new(),
+        version,
+        description,
         size,
         repository: repo,
     })
+}
+
+fn extract_version_from_manager(package: &str, manager: &PackageManager) -> String {
+    let output = match Command::new(manager.program)
+        .args(&["-Si", package])
+        .output()
+    {
+        Ok(out) => out,
+        Err(_) => return String::new(),
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        if line.starts_with("Version") {
+            if let Some(version) = line.split(':').nth(1) {
+                return version.trim().to_string();
+            }
+        }
+    }
+    String::new()
+}
+
+fn extract_description_from_manager(package: &str, manager: &PackageManager) -> String {
+    let output = match Command::new(manager.program)
+        .args(&["-Si", package])
+        .output()
+    {
+        Ok(out) => out,
+        Err(_) => return String::new(),
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        if line.starts_with("Description") {
+            if let Some(desc) = line.split(':').nth(1) {
+                return desc.trim().to_string();
+            }
+        }
+    }
+    String::new()
 }
 
 fn search_package_flatpak(package: &str) -> Option<SearchResult> {
