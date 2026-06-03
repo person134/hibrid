@@ -363,6 +363,18 @@ fn ask_removal_confirmation() -> bool {
     input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes")
 }
 
+/// Ask user for update confirmation
+fn ask_update_confirmation() -> bool {
+    print!("{} {} {} ", "⟳".bright_yellow().bold(), "Update this".bright_white(), "package?".yellow().bold());
+    print!("{} ", "(Y/N):".bright_black());
+    io::stdout().flush().unwrap();
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+
+    input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes")
+}
+
 
 /// Check if a command exists (silently)
 fn command_exists(program: &str) -> bool {
@@ -806,7 +818,8 @@ fn main() {
                 // Flatpak update
                 if packages.is_empty() {
                     // Update all flatpaks
-                    if !skip_confirm && !ask_confirmation() {
+                    println!("{}", format_box_multiple("Update Flatpak", vec![("All installed flatpaks".to_string(), String::new(), String::new())]).bright_magenta());
+                    if !skip_confirm && !ask_update_confirmation() {
                         println!("{}", "Update cancelled".yellow());
                         return;
                     }
@@ -814,8 +827,13 @@ fn main() {
                     print_result(action, status, "");
                 } else {
                     // Update specific flatpak(s)
+                    let packages_info: Vec<(String, String, String)> = packages.iter()
+                        .map(|p| (p.to_string(), String::new(), String::new()))
+                        .collect();
+                    println!("{}", format_box_multiple("Update Flatpak", packages_info).bright_magenta());
+                    
                     for package in &packages {
-                        if !skip_confirm && !ask_confirmation() {
+                        if !skip_confirm && !ask_update_confirmation() {
                             println!("{}", "Update cancelled".yellow());
                             return;
                         }
@@ -829,7 +847,8 @@ fn main() {
                     Some(manager) => {
                         if packages.is_empty() {
                             // Update system
-                            if !skip_confirm && !ask_confirmation() {
+                            println!("{}", format_box_multiple("Update", vec![("All packages".to_string(), String::new(), String::new())]).bright_cyan());
+                            if !skip_confirm && !ask_update_confirmation() {
                                 println!("{}", "Update cancelled".yellow());
                                 return;
                             }
@@ -841,8 +860,13 @@ fn main() {
                             print_result(action, status, "");
                         } else {
                             // Update specific package(s)
+                            let packages_info: Vec<(String, String, String)> = packages.iter()
+                                .map(|p| (p.to_string(), String::new(), String::new()))
+                                .collect();
+                            println!("{}", format_box_multiple("Update", packages_info).bright_cyan());
+                            
                             for package in &packages {
-                                if !skip_confirm && !ask_confirmation() {
+                                if !skip_confirm && !ask_update_confirmation() {
                                     println!("{}", "Update cancelled".yellow());
                                     return;
                                 }
