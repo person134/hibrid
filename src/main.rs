@@ -152,6 +152,11 @@ fn extract_package_info(output: &str, pkg_manager: &str) -> String {
 
 /// Fuzzy match flatpak app ID
 fn fuzzy_match_flatpak(query: &str) -> Option<String> {
+    fuzzy_match_flatpak_with_size(query).map(|(id, _)| id)
+}
+
+/// Fuzzy match flatpak app ID and extract size
+fn fuzzy_match_flatpak_with_size(query: &str) -> Option<(String, String)> {
     match Command::new("flatpak").args(&["search", query]).output() {
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -160,11 +165,26 @@ fn fuzzy_match_flatpak(query: &str) -> Option<String> {
                 if line.contains("Name") || line.trim().is_empty() {
                     continue;
                 }
-                // Look for app ID pattern (org.* or com.*)
-                for part in line.split_whitespace() {
+
+                let mut app_id = String::new();
+                let mut size = String::new();
+
+                // Extract app ID and size from the line
+                let parts: Vec<&str> = line.split_whitespace().collect();
+
+                for (i, part) in parts.iter().enumerate() {
                     if (part.starts_with("org.") || part.starts_with("com.")) && part.contains('.') {
-                        return Some(part.to_string());
+                        app_id = part.to_string();
+                        // Size is typically at the end or near the end
+                        if i + 1 < parts.len() {
+                            size = parts[i + 1].to_string();
+                        }
+                        break;
                     }
+                }
+
+                if !app_id.is_empty() {
+                    return Some((app_id, size));
                 }
             }
             None
@@ -425,15 +445,15 @@ fn main() {
                 let mut full_app_ids = Vec::new();
 
                 for package in &packages {
-                    let full_app_id = match fuzzy_match_flatpak(package) {
-                        Some(id) => id,
+                    let (full_app_id, size) = match fuzzy_match_flatpak_with_size(package) {
+                        Some((id, sz)) => (id, sz),
                         None => {
                             println!("{}", format!("{}: Package not found", package).red());
                             all_valid = false;
                             continue;
                         }
                     };
-                    packages_info.push((package.to_string(), "flathub".to_string(), String::new()));
+                    packages_info.push((package.to_string(), "flathub".to_string(), size));
                     full_app_ids.push(full_app_id);
                 }
 
