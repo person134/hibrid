@@ -31,7 +31,6 @@ enum Action {
     RemoveFlatpakQuiet,
     RemoveAutoinstallFlatpak,
     RemoveAutoinstallFlatpakQuiet,
-    Version,
     Search,
     SearchFlatpak,
 }
@@ -221,6 +220,63 @@ fn get_package_info(program: &str, args: &[&str], pkg_manager: &str) -> (String,
     }
 }
 
+/// Check if a package is installed and get its size
+fn get_installed_package_info(program: &str, package: &str, pkg_manager: &str) -> (String, String) {
+    let args = match pkg_manager {
+        "pacman" => vec!["-Qi", package],
+        "apt" => vec!["show", package],
+        "dnf" => vec!["list", "installed", package],
+        _ => return (String::new(), String::new()),
+    };
+
+    match Command::new(program).args(&args).output() {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            if output.status.success() {
+                parse_installed_output(&stdout, pkg_manager)
+            } else {
+                (String::new(), String::new())
+            }
+        }
+        Err(_) => (String::new(), String::new()),
+    }
+}
+
+/// Parse installed package output to extract size
+fn parse_installed_output(output: &str, pkg_manager: &str) -> (String, String) {
+    match pkg_manager {
+        "pacman" => {
+            let mut size = String::new();
+            for line in output.lines() {
+                if line.starts_with("Installed Size") {
+                    size = line.split(':').nth(1).unwrap_or("").trim().to_string();
+                    break;
+                }
+            }
+            (String::new(), size)
+        }
+        "apt" => {
+            for line in output.lines() {
+                if line.starts_with("Size:") {
+                    let size = line.split(':').nth(1).unwrap_or("").trim().to_string();
+                    return (String::new(), size);
+                }
+            }
+            (String::new(), String::new())
+        }
+        "dnf" => {
+            for line in output.lines() {
+                if line.contains("installed") {
+                    let size = line.trim().to_string();
+                    return (String::new(), size);
+                }
+            }
+            (String::new(), String::new())
+        }
+        _ => (String::new(), String::new()),
+    }
+}
+
 /// Parse search output to extract size and repository info (returns tuple: repo, size)
 fn parse_search_output(output: &str, pkg_manager: &str) -> (String, String) {
     match pkg_manager {
@@ -345,16 +401,12 @@ fn parse_action(flag: &str) -> Option<Action> {
     let flag_chars = &flag[1..];
     let base = flag_chars.chars().next().unwrap();
 
-    if base == 'V' {
-        return if flag_chars.len() == 1 {
-            Some(Action::Version)
-        } else {
-            None
-        };
-    }
-
     if base == 'S' {
         let modifiers = &flag_chars[1..];
+        // Validate that modifiers only contain 'f'
+        if !modifiers.chars().all(|c| c == 'f') {
+            return None;
+        }
         let has_f = modifiers.contains('f');
         return match has_f {
             true => Some(Action::SearchFlatpak),
@@ -363,6 +415,11 @@ fn parse_action(flag: &str) -> Option<Action> {
     }
 
     let modifiers = &flag_chars[1..];
+
+    // Validate that modifiers only contain valid characters (a, q, f)
+    if !modifiers.chars().all(|c| c == 'a' || c == 'q' || c == 'f') {
+        return None;
+    }
 
     let has_a = modifiers.contains('a');
     let has_q = modifiers.contains('q');
@@ -572,14 +629,13 @@ fn main() {
 
     if args.len() < 2 {
         println!("{}", "╔════════════════════════════════════════════════════════════╗".bright_cyan());
-        println!("{}", "║          Hibrid Package Manager Wrapper v1.0              ║".bright_cyan());
+        println!("{}", "║              Hibrid Package Manager Wrapper               ║".bright_cyan());
         println!("{}", "╚════════════════════════════════════════════════════════════╝".bright_cyan());
         println!();
-        println!("{}", "Usage: hibrid [-I|-R|-V][a][q][f] pkg".bright_white().bold());
+        println!("{}", "Usage: hibrid [-I|-R][a][q][f] pkg".bright_white().bold());
         println!();
         println!("  {} Install package", "-I".green().bold());
         println!("  {} Remove package", "-R".red().bold());
-        println!("  {} Show version", "-V".yellow().bold());
         println!();
         println!("{}", "Modifiers:".bright_white().bold());
         println!("  {} Autoinstall (skip confirmation)", "a".bright_yellow());
@@ -606,13 +662,6 @@ fn main() {
             return;
         }
     };
-
-    if let Action::Version = action {
-        println!("{}", "╔════════════════════════════════════════════════════════════╗".bright_cyan());
-        println!("{} {}", "║".bright_cyan(), "Hibrid package manager wrapper v1.0".bright_cyan().bold());
-        println!("{}", "╚════════════════════════════════════════════════════════════╝".bright_cyan());
-        return;
-    }
 
     // Search handling
     if matches!(action, Action::Search | Action::SearchFlatpak) {
@@ -809,7 +858,7 @@ fn main() {
                             let mut packages_info = Vec::new();
 
                             for package in &packages {
-                                let (_, size) = manager.search_info(package);
+                                let (_, size) = get_installed_package_info(manager.program, package, manager.program);
                                 if size.is_empty() {
                                     println!("{}", format!("{}: Package not installed or doesn't exist", package).red());
                                     all_valid = false;

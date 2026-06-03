@@ -1,6 +1,5 @@
 [package]
 name = "Hibrid"
-version = "0.1.0"
 edition = "2021"
 authors = ["person134"]
 description = "A lightweight cross-platform package manager wrapper for Windows and Linux."
