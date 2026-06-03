@@ -192,11 +192,11 @@ fn fuzzy_match_flatpak_with_size(query: &str) -> Option<(String, String)> {
 
 /// Get download size for a flatpak package
 fn get_flatpak_size(app_id: &str) -> String {
-    match Command::new("flatpak").args(&["info", app_id]).output() {
+    match Command::new("flatpak").args(&["remote-info", "flathub", app_id]).output() {
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout);
             for line in stdout.lines() {
-                if line.contains("Download size:") {
+                if line.contains("Download:") {
                     if let Some(size) = line.split(':').nth(1) {
                         return size.trim().to_string();
                     }
