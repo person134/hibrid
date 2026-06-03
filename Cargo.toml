@@ -1,0 +1,24 @@
+[package]
+name = "Hibrid"
+version = "0.1.0"
+edition = "2021"
+authors = ["person134"]
+description = "A lightweight cross-platform package manager wrapper for Windows and Linux."
+license = "MIT"
+repository = "https://github.com/person134/hibrid.git"
+readme = "README.md"
+keywords = ["cli", "package-manager", "winget", "linux", "cross-platform"]
+categories = ["windows", "linux", "package-manager", "package", "windows-10", "managing-files", "windows-11"]
+
+[dependencies]
+colored = "2.1"
+
+[[bin]]
+name = "hibrid"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
