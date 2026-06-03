@@ -492,6 +492,7 @@ fn main() {
                     match action {
                         Action::Install | Action::InstallDetailed | Action::InstallAutoinstall | Action::InstallAutoinstallDetailed => {
                             let mut all_valid = true;
+                            let mut packages_info = Vec::new();
 
                             for package in &packages {
                                 let (repo, size) = manager.search_info(package);
@@ -500,12 +501,14 @@ fn main() {
                                     all_valid = false;
                                     continue;
                                 }
-                                println!("{}", format_box("Install", package, &repo, &size).bright_cyan());
+                                packages_info.push((package.to_string(), repo, size));
                             }
 
                             if !all_valid {
                                 return;
                             }
+
+                            println!("{}", format_box_multiple("Install", packages_info).bright_cyan());
 
                             if !skip_confirm && !ask_confirmation() {
                                 println!("{}", "Installation cancelled".yellow());
@@ -525,6 +528,7 @@ fn main() {
                         }
                         Action::Remove | Action::RemoveDetailed | Action::RemoveAutoinstall | Action::RemoveAutoinstallDetailed => {
                             let mut all_valid = true;
+                            let mut packages_info = Vec::new();
 
                             for package in &packages {
                                 let (_, size) = manager.search_info(package);
@@ -533,12 +537,14 @@ fn main() {
                                     all_valid = false;
                                     continue;
                                 }
-                                println!("{}", format_box("Remove", package, "", &size).bright_red());
+                                packages_info.push((package.to_string(), String::new(), size));
                             }
 
                             if !all_valid {
                                 return;
                             }
+
+                            println!("{}", format_box_multiple("Remove", packages_info).bright_red());
 
                             if !skip_confirm && !ask_removal_confirmation() {
                                 println!("{}", "Removal cancelled".yellow());
@@ -599,6 +605,36 @@ fn format_box(title: &str, package: &str, repo: &str, size: &str) -> String {
     if !size.is_empty() {
         let size_line = format!("Size: {}", size);
         result.push_str(&format!("│ {:<36} │\n", size_line));
+    }
+
+    result.push_str(&format!("└{}┘\n", "─".repeat(width - 2)));
+
+    result
+}
+
+fn format_box_multiple(title: &str, packages_info: Vec<(String, String, String)>) -> String {
+    let width = 40;
+    let mut title_str = format!(" {} ", title);
+    if title_str.len() > width - 4 {
+        title_str = format!(" {} ", &title[..title.len().saturating_sub(title_str.len() - (width - 4))]);
+    }
+
+    let mut result = String::new();
+
+    let dashes = "─".repeat(width - title_str.len() - 2);
+    result.push_str(&format!("┌{}{}┐\n", title_str, dashes));
+
+    for (pkg, repo, size) in packages_info {
+        let pkg_line = if !repo.is_empty() && !size.is_empty() {
+            format!("{} ({}) - {}", pkg, repo, size)
+        } else if !size.is_empty() {
+            format!("{} - {}", pkg, size)
+        } else if !repo.is_empty() {
+            format!("{} ({})", pkg, repo)
+        } else {
+            pkg
+        };
+        result.push_str(&format!("│ {:<36} │\n", pkg_line));
     }
 
     result.push_str(&format!("└{}┘\n", "─".repeat(width - 2)));
