@@ -387,7 +387,7 @@ fn main() {
 
     if args.len() < 2 {
         println!("{}", "╔════════════════════════════════════════════════════════════╗".bright_cyan());
-        println!("{}", "║          🎯 Hibrid Package Manager Wrapper v1.0            ║".bright_cyan());
+        println!("{}", "║          Hibrid Package Manager Wrapper v1.0              ║".bright_cyan());
         println!("{}", "╚════════════════════════════════════════════════════════════╝".bright_cyan());
         println!();
         println!("{}", "Usage: hibrid [-I|-R|-V][a][d][f] pkg".bright_white().bold());
@@ -416,7 +416,7 @@ fn main() {
     let action = match parse_action(filtered.get(0).unwrap_or(&"")) {
         Some(a) => a,
         None => {
-            println!("{} {}", "✗".red().bold(), "Invalid command".red());
+            println!("{}", "Invalid command".red());
             return;
         }
     };
@@ -431,7 +431,7 @@ fn main() {
     let package = filtered.get(1).unwrap_or(&"");
 
     if package.is_empty() {
-        println!("{} {}", "✗".red().bold(), "No package given".red());
+        println!("{}", "No package given".red());
         exit(1);
     }
 
@@ -448,15 +448,15 @@ fn main() {
                 let full_app_id = match fuzzy_match_flatpak(package) {
                     Some(id) => id,
                     None => {
-                        println!("{} {}", "✗".red().bold(), "Package not found".red());
+                        println!("{}", "Package not found".red());
                         return;
                     }
                 };
 
-                println!("{} {} {} {}", "📦".bright_cyan(), "flatpak found".bright_white(), package.bright_green().bold(), "in flathub repository.".bright_white());
+                println!("flatpak found {} in flathub repository.", package.bright_green().bold());
 
                 if !skip_confirm && !ask_confirmation() {
-                    println!("{} {}", "⊘".yellow(), "Installation cancelled".yellow());
+                    println!("{}", "Installation cancelled".yellow());
                     return;
                 }
 
@@ -474,10 +474,10 @@ fn main() {
                     }
                 }
 
-                println!("{} {} {}", "🗑".bright_red(), package.bright_red().bold(), "will be removed.".bright_white());
+                println!("{} {}", package.bright_red().bold(), "will be removed.".bright_white());
 
                 if !skip_confirm && !ask_removal_confirmation() {
-                    println!("{} {}", "⊘".yellow(), "Removal cancelled".yellow());
+                    println!("{}", "Removal cancelled".yellow());
                     return;
                 }
 
@@ -512,7 +512,7 @@ fn main() {
                 Some(manager) => {
                     let is_detailed = matches!(action, Action::InstallDetailed | Action::RemoveDetailed | Action::InstallAutoinstallDetailed | Action::RemoveAutoinstallDetailed);
                     let skip_confirm = is_autoinstall(action);
-                    
+
                     match action {
                         Action::Install | Action::InstallDetailed | Action::InstallAutoinstall | Action::InstallAutoinstallDetailed => {
                             // Show package info and ask for confirmation before installing
@@ -520,21 +520,21 @@ fn main() {
 
                             // Check if package was found
                             if size.is_empty() {
-                                println!("{} {}", "✗".red().bold(), "Package not found".red());
+                                println!("{}", "Package not found".red());
                                 return;
                             }
 
                             if !repo.is_empty() {
-                                println!("{} {} {} {} {}", "📦".bright_cyan(), package.bright_green().bold(), "found in".bright_white(), format!("\"{}\"", repo).bright_yellow(), "repository".bright_white());
+                                println!("{} {} {}", package.bright_green().bold(), "found in".bright_white(), format!("\"{}\"", repo).bright_yellow());
                             } else {
-                                println!("{} {}", "📦".bright_cyan(), format!("{} found", package.bright_green().bold()).bright_white());
+                                println!("{} {}", package.bright_green().bold(), "found".bright_white());
                             }
                             if !size.is_empty() {
-                                println!("   {} {} {}", "📊".bright_cyan(), "Total size:".bright_white(), size.bright_yellow());
+                                println!("Total size: {}", size.bright_yellow());
                             }
 
                             if !skip_confirm && !ask_confirmation() {
-                                println!("{} {}", "⊘".yellow(), "Installation cancelled".yellow());
+                                println!("{}", "Installation cancelled".yellow());
                                 return;
                             }
                         }
@@ -544,23 +544,23 @@ fn main() {
 
                             // Check if package exists/is installed
                             if size.is_empty() {
-                                println!("{} {}", "✗".red().bold(), "Package not installed or doesn't exist".red());
+                                println!("{}", "Package not installed or doesn't exist".red());
                                 return;
                             }
 
-                            println!("{} {} {}", "🗑".bright_red(), package.bright_red().bold(), "will be removed.".bright_white());
+                            println!("{} {}", package.bright_red().bold(), "will be removed.".bright_white());
                             if !size.is_empty() {
-                                println!("   {} {} {}", "📊".bright_cyan(), "Total removed size:".bright_white(), size.bright_yellow());
+                                println!("Total removed size: {}", size.bright_yellow());
                             }
 
                             if !skip_confirm && !ask_removal_confirmation() {
-                                println!("{} {}", "⊘".yellow(), "Removal cancelled".yellow());
+                                println!("{}", "Removal cancelled".yellow());
                                 return;
                             }
                         }
                         _ => {}
                     }
-                    
+
                     let (status, _) = run_command_with_output_detailed("sudo", &{
                         let mut v = vec![manager.program];
                         let mut base = match action {
@@ -575,14 +575,14 @@ fn main() {
                     (status, String::new())
                 }
                 None => {
-                    println!("{} {}", "✗".red().bold(), "No supported package manager found".red());
+                    println!("{}", "No supported package manager found".red());
                     (false, String::new())
                 }
             }
         }
 
         System::Unknown => {
-            println!("{} {}", "✗".red().bold(), "Unsupported system".red());
+            println!("{}", "Unsupported system".red());
             (false, String::new())
         }
     };
@@ -591,42 +591,39 @@ fn main() {
 }
 
 fn print_result(action: Action, success: bool, _info: &str) {
-    let icon_success = "✓".green().bold();
-    let icon_fail = "✗".red().bold();
-
     match (action, success) {
-        (Action::Install, true) => println!("{} {}", icon_success, "Install finished".green()),
-        (Action::Install, false) => println!("{} {}", icon_fail, "Install failed".red()),
-        (Action::InstallDetailed, true) => println!("{} {}", icon_success, "Install finished".green()),
-        (Action::InstallDetailed, false) => println!("{} {}", icon_fail, "Install failed".red()),
-        (Action::InstallAutoinstall, true) => println!("{} {}", icon_success, "Install finished".green()),
-        (Action::InstallAutoinstall, false) => println!("{} {}", icon_fail, "Install failed".red()),
-        (Action::InstallAutoinstallDetailed, true) => println!("{} {}", icon_success, "Install finished".green()),
-        (Action::InstallAutoinstallDetailed, false) => println!("{} {}", icon_fail, "Install failed".red()),
-        (Action::InstallFlatpak, true) => println!("{} {}", icon_success, "Install finished".green()),
-        (Action::InstallFlatpak, false) => println!("{} {}", icon_fail, "Install failed".red()),
-        (Action::InstallFlatpakDetailed, true) => println!("{} {}", icon_success, "Install finished".green()),
-        (Action::InstallFlatpakDetailed, false) => println!("{} {}", icon_fail, "Install failed".red()),
-        (Action::InstallAutoinstallFlatpak, true) => println!("{} {}", icon_success, "Install finished".green()),
-        (Action::InstallAutoinstallFlatpak, false) => println!("{} {}", icon_fail, "Install failed".red()),
-        (Action::InstallAutoinstallFlatpakDetailed, true) => println!("{} {}", icon_success, "Install finished".green()),
-        (Action::InstallAutoinstallFlatpakDetailed, false) => println!("{} {}", icon_fail, "Install failed".red()),
-        (Action::Remove, true) => println!("{} {}", icon_success, "Removal finished".green()),
-        (Action::Remove, false) => println!("{} {}", icon_fail, "Removal failed".red()),
-        (Action::RemoveDetailed, true) => println!("{} {}", icon_success, "Removal finished".green()),
-        (Action::RemoveDetailed, false) => println!("{} {}", icon_fail, "Removal failed".red()),
-        (Action::RemoveAutoinstall, true) => println!("{} {}", icon_success, "Removal finished".green()),
-        (Action::RemoveAutoinstall, false) => println!("{} {}", icon_fail, "Removal failed".red()),
-        (Action::RemoveAutoinstallDetailed, true) => println!("{} {}", icon_success, "Removal finished".green()),
-        (Action::RemoveAutoinstallDetailed, false) => println!("{} {}", icon_fail, "Removal failed".red()),
-        (Action::RemoveFlatpak, true) => println!("{} {}", icon_success, "Removal finished".green()),
-        (Action::RemoveFlatpak, false) => println!("{} {}", icon_fail, "Removal failed".red()),
-        (Action::RemoveFlatpakDetailed, true) => println!("{} {}", icon_success, "Removal finished".green()),
-        (Action::RemoveFlatpakDetailed, false) => println!("{} {}", icon_fail, "Removal failed".red()),
-        (Action::RemoveAutoinstallFlatpak, true) => println!("{} {}", icon_success, "Removal finished".green()),
-        (Action::RemoveAutoinstallFlatpak, false) => println!("{} {}", icon_fail, "Removal failed".red()),
-        (Action::RemoveAutoinstallFlatpakDetailed, true) => println!("{} {}", icon_success, "Removal finished".green()),
-        (Action::RemoveAutoinstallFlatpakDetailed, false) => println!("{} {}", icon_fail, "Removal failed".red()),
+        (Action::Install, true) => println!("{}", "Install finished".green()),
+        (Action::Install, false) => println!("{}", "Install failed".red()),
+        (Action::InstallDetailed, true) => println!("{}", "Install finished".green()),
+        (Action::InstallDetailed, false) => println!("{}", "Install failed".red()),
+        (Action::InstallAutoinstall, true) => println!("{}", "Install finished".green()),
+        (Action::InstallAutoinstall, false) => println!("{}", "Install failed".red()),
+        (Action::InstallAutoinstallDetailed, true) => println!("{}", "Install finished".green()),
+        (Action::InstallAutoinstallDetailed, false) => println!("{}", "Install failed".red()),
+        (Action::InstallFlatpak, true) => println!("{}", "Install finished".green()),
+        (Action::InstallFlatpak, false) => println!("{}", "Install failed".red()),
+        (Action::InstallFlatpakDetailed, true) => println!("{}", "Install finished".green()),
+        (Action::InstallFlatpakDetailed, false) => println!("{}", "Install failed".red()),
+        (Action::InstallAutoinstallFlatpak, true) => println!("{}", "Install finished".green()),
+        (Action::InstallAutoinstallFlatpak, false) => println!("{}", "Install failed".red()),
+        (Action::InstallAutoinstallFlatpakDetailed, true) => println!("{}", "Install finished".green()),
+        (Action::InstallAutoinstallFlatpakDetailed, false) => println!("{}", "Install failed".red()),
+        (Action::Remove, true) => println!("{}", "Removal finished".green()),
+        (Action::Remove, false) => println!("{}", "Removal failed".red()),
+        (Action::RemoveDetailed, true) => println!("{}", "Removal finished".green()),
+        (Action::RemoveDetailed, false) => println!("{}", "Removal failed".red()),
+        (Action::RemoveAutoinstall, true) => println!("{}", "Removal finished".green()),
+        (Action::RemoveAutoinstall, false) => println!("{}", "Removal failed".red()),
+        (Action::RemoveAutoinstallDetailed, true) => println!("{}", "Removal finished".green()),
+        (Action::RemoveAutoinstallDetailed, false) => println!("{}", "Removal failed".red()),
+        (Action::RemoveFlatpak, true) => println!("{}", "Removal finished".green()),
+        (Action::RemoveFlatpak, false) => println!("{}", "Removal failed".red()),
+        (Action::RemoveFlatpakDetailed, true) => println!("{}", "Removal finished".green()),
+        (Action::RemoveFlatpakDetailed, false) => println!("{}", "Removal failed".red()),
+        (Action::RemoveAutoinstallFlatpak, true) => println!("{}", "Removal finished".green()),
+        (Action::RemoveAutoinstallFlatpak, false) => println!("{}", "Removal failed".red()),
+        (Action::RemoveAutoinstallFlatpakDetailed, true) => println!("{}", "Removal finished".green()),
+        (Action::RemoveAutoinstallFlatpakDetailed, false) => println!("{}", "Removal failed".red()),
         _ => {}
     }
 }

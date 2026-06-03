@@ -1,38 +1,108 @@
-# Exceedingly important information you should never ever ignore
+# Development Notice
 
 This project is still in development. Things do and will eventually break.
 
+---
+
 # Hibrid
 
-Hibrid is a minimal cross-platform package manager wrapper for Windows and Linux. <br />
-It provides a unified command interface over multiple system package managers, allowing you to install and remove software using a single consistent CLI. <br />
-Supported backends:
+A minimal cross-platform package manager wrapper for Windows and Linux. Hibrid provides a unified command interface over multiple system package managers, allowing you to install and remove software using a single consistent CLI.
 
-- Windows: winget <br />
-- Linux: apt, pacman, dnf <br />
-- Linux (optional): flatpak <br />
-
----
-
-# Features
-
-- Cross-platform <br />
-- Automatic Linux package manager detection <br />
-- Optional Flatpak support <br />
-- Lightweight and fast <br />
-- No external dependencies <br />
-- Clean and extendable Rust codebase <br />
+**Supported backends:**
+- **Windows:** winget
+- **Linux:** apt, pacman, dnf
+- **Linux (optional):** flatpak
 
 ---
 
-# Installation
+## Features
 
-There is currently no installer and no plans to create one in the future. <br />
-Hibrid is intentionally lightweight and minimal. Building the project takes only a few seconds and requires no external dependencies beyond Rust itself.
-The same build commands work on both Linux and Windows. <br />
+- Cross-platform (Windows & Linux)
+- Automatic Linux package manager detection
+- Optional Flatpak support
+- Lightweight and fast
+- No external dependencies (Rust only)
+- Clean and extendable codebase
 
-## Build from source
+---
 
-git clone https://github.com/person134/hibrid.git <br />
-cd hibrid <br />
-cargo build --release <br />
+## Requirements
+
+- **Rust 1.56+** ([Install Rust](https://rustup.rs/))
+- For Linux: One of apt, pacman, or dnf must be installed
+- For Windows: winget must be available
+
+---
+
+## Installation
+
+Hibrid is intentionally lightweight with no installer. Building takes seconds and requires only Rust.
+
+### Build from source
+
+```bash
+git clone https://github.com/person134/hibrid.git
+cd hibrid
+cargo build --release
+```
+
+The binary will be at `target/release/hibrid` (or `hibrid.exe` on Windows).
+
+---
+
+## Usage
+
+```bash
+hibrid [-I|-R|-V][a][d][f] package
+```
+
+**Main commands:**
+- `-I` Install a package
+- `-R` Remove a package
+- `-V` Show version
+
+**Modifiers:**
+- `a` Autoinstall (skip confirmation prompt)
+- `d` Detailed output
+- `f` Use Flatpak backend
+
+**Examples:**
+```bash
+hibrid -I vim
+hibrid -Ia firefox
+hibrid -R vim
+hibrid -If spotify
+hibrid -Id vlc
+hibrid -V
+```
+
+---
+
+## Development
+
+### Running tests
+```bash
+cargo test
+```
+
+### Building debug version
+```bash
+cargo build
+```
+
+### Code structure
+- `src/main.rs` — Main CLI application entry point
+- `examples/` — Usage examples
+- `tests/` — Integration tests
+
+---
+
+## License
+
+MIT License — see [LICENSE](LICENSE) file for details
+
+---
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit issues and pull requests.
