@@ -449,7 +449,7 @@ fn main() {
                 }
 
                 for full_app_id in full_app_ids {
-                    let (status, _) = run_command_with_output_detailed("flatpak", &["install", "-y", "-d", "flathub", &full_app_id], "flatpak", is_detailed);
+                    let (status, _) = run_command_with_output_detailed("flatpak", &["install", "-y", "flathub", &full_app_id], "flatpak", is_detailed);
                     print_result(action, status, "");
                 }
             }
