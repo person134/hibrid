@@ -453,7 +453,7 @@ fn main() {
                     }
                 };
 
-                println!("flatpak found {} in flathub repository.", package.bright_green().bold());
+                println!("{}", format_box("Install Flatpak", package, "flathub", "").bright_magenta());
 
                 if !skip_confirm && !ask_confirmation() {
                     println!("{}", "Installation cancelled".yellow());
@@ -474,7 +474,7 @@ fn main() {
                     }
                 }
 
-                println!("{} {}", package.bright_red().bold(), "will be removed.".bright_white());
+                println!("{}", format_box("Remove Flatpak", package, "", "").bright_magenta());
 
                 if !skip_confirm && !ask_removal_confirmation() {
                     println!("{}", "Removal cancelled".yellow());
@@ -524,14 +524,7 @@ fn main() {
                                 return;
                             }
 
-                            if !repo.is_empty() {
-                                println!("{} {} {}", package.bright_green().bold(), "found in".bright_white(), format!("\"{}\"", repo).bright_yellow());
-                            } else {
-                                println!("{} {}", package.bright_green().bold(), "found".bright_white());
-                            }
-                            if !size.is_empty() {
-                                println!("Total size: {}", size.bright_yellow());
-                            }
+                            println!("{}", format_box("Install", package, &repo, &size).bright_cyan());
 
                             if !skip_confirm && !ask_confirmation() {
                                 println!("{}", "Installation cancelled".yellow());
@@ -548,10 +541,7 @@ fn main() {
                                 return;
                             }
 
-                            println!("{} {}", package.bright_red().bold(), "will be removed.".bright_white());
-                            if !size.is_empty() {
-                                println!("Total removed size: {}", size.bright_yellow());
-                            }
+                            println!("{}", format_box("Remove", package, "", &size).bright_red());
 
                             if !skip_confirm && !ask_removal_confirmation() {
                                 println!("{}", "Removal cancelled".yellow());
@@ -588,6 +578,37 @@ fn main() {
     };
 
     print_result(action, success, &info);
+}
+
+
+fn format_box(title: &str, package: &str, repo: &str, size: &str) -> String {
+    let width = 40;
+    let mut title_str = format!(" {} ", title);
+    if title_str.len() > width - 4 {
+        title_str = format!(" {} ", &title[..title.len().saturating_sub(title_str.len() - (width - 4))]);
+    }
+
+    let mut result = String::new();
+
+    let dashes = "─".repeat(width - title_str.len() - 2);
+    result.push_str(&format!("{}┌{}{}┐{}\n", "", title_str, dashes, ""));
+
+    let pkg_line = format!("Package: {}", package);
+    result.push_str(&format!("│ {:<38} │\n", pkg_line));
+
+    if !repo.is_empty() {
+        let repo_line = format!("Repository: {}", repo);
+        result.push_str(&format!("│ {:<38} │\n", repo_line));
+    }
+
+    if !size.is_empty() {
+        let size_line = format!("Size: {}", size);
+        result.push_str(&format!("│ {:<38} │\n", size_line));
+    }
+
+    result.push_str(&format!("└{}┘\n", "─".repeat(width - 2)));
+
+    result
 }
 
 fn print_result(action: Action, success: bool, _info: &str) {
