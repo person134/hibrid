@@ -476,7 +476,8 @@ fn main() {
                     return;
                 }
 
-                println!("{}", format_box_multiple("Install Flatpak", packages_info).bright_magenta());
+                let title = if is_detailed { "Install Flatpak Detailed" } else { "Install Flatpak" };
+                println!("{}", format_box_multiple(title, packages_info).bright_magenta());
 
                 if !skip_confirm && !ask_confirmation() {
                     println!("{}", "Installation cancelled".yellow());
@@ -510,7 +511,8 @@ fn main() {
                     return;
                 }
 
-                println!("{}", format_box_multiple("Remove Flatpak", packages_info).bright_magenta());
+                let title = if is_detailed { "Remove Flatpak Detailed" } else { "Remove Flatpak" };
+                println!("{}", format_box_multiple(title, packages_info).bright_magenta());
 
                 if !skip_confirm && !ask_removal_confirmation() {
                     println!("{}", "Removal cancelled".yellow());
