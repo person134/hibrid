@@ -31,6 +31,16 @@ enum Action {
     RemoveFlatpakQuiet,
     RemoveAutoinstallFlatpak,
     RemoveAutoinstallFlatpakQuiet,
+    Update,
+    UpdateQuiet,
+    UpdateAutoinstall,
+    UpdateAutoinstallQuiet,
+    UpdateFlatpak,
+    UpdateFlatpakQuiet,
+    UpdateAutoinstallFlatpak,
+    UpdateAutoinstallFlatpakQuiet,
+    List,
+    ListFlatpak,
     Search,
     SearchFlatpak,
 }
@@ -40,6 +50,9 @@ struct PackageManager {
     program: &'static str,
     install_args: &'static [&'static str],
     remove_args: &'static [&'static str],
+    update_args: &'static [&'static str],
+    update_single_args: &'static [&'static str],
+    list_args: &'static [&'static str],
     search_args: &'static [&'static str],
 }
 
@@ -379,18 +392,27 @@ fn detect_linux_package_manager() -> Option<PackageManager> {
             program: "apt",
             install_args: &["install", "-y"],
             remove_args: &["remove", "-y"],
+            update_args: &["upgrade", "-y"],
+            update_single_args: &["install", "--only-upgrade", "-y"],
+            list_args: &["list", "--installed"],
             search_args: &["cache", "show"],
         },
         PackageManager {
             program: "pacman",
             install_args: &["-S", "--noconfirm"],
             remove_args: &["-R", "--noconfirm"],
+            update_args: &["-Syu", "--noconfirm"],
+            update_single_args: &["-S", "--noconfirm"],
+            list_args: &["-Q"],
             search_args: &["-Si"],
         },
         PackageManager {
             program: "dnf",
             install_args: &["install", "-y"],
             remove_args: &["remove", "-y"],
+            update_args: &["upgrade", "-y"],
+            update_single_args: &["upgrade", "-y"],
+            list_args: &["list", "installed"],
             search_args: &["info"],
         },
     ];
@@ -425,6 +447,19 @@ fn parse_action(flag: &str) -> Option<Action> {
         };
     }
 
+    if base == 'L' {
+        let modifiers = &flag_chars[1..];
+        // Validate that modifiers only contain 'f'
+        if !modifiers.chars().all(|c| c == 'f') {
+            return None;
+        }
+        let has_f = modifiers.contains('f');
+        return match has_f {
+            true => Some(Action::ListFlatpak),
+            false => if modifiers.is_empty() { Some(Action::List) } else { None },
+        };
+    }
+
     let modifiers = &flag_chars[1..];
 
     // Validate that modifiers only contain valid characters (a, q, f)
@@ -453,6 +488,14 @@ fn parse_action(flag: &str) -> Option<Action> {
         ('R', false, true, true) => Some(Action::RemoveFlatpakQuiet),
         ('R', true, false, true) => Some(Action::RemoveAutoinstallFlatpak),
         ('R', true, true, true) => Some(Action::RemoveAutoinstallFlatpakQuiet),
+        ('U', false, false, false) => Some(Action::Update),
+        ('U', false, true, false) => Some(Action::UpdateQuiet),
+        ('U', true, false, false) => Some(Action::UpdateAutoinstall),
+        ('U', true, true, false) => Some(Action::UpdateAutoinstallQuiet),
+        ('U', false, false, true) => Some(Action::UpdateFlatpak),
+        ('U', false, true, true) => Some(Action::UpdateFlatpakQuiet),
+        ('U', true, false, true) => Some(Action::UpdateAutoinstallFlatpak),
+        ('U', true, true, true) => Some(Action::UpdateAutoinstallFlatpakQuiet),
         _ => None,
     }
 }
@@ -469,6 +512,10 @@ fn is_autoinstall(action: Action) -> bool {
             | Action::RemoveAutoinstallQuiet
             | Action::RemoveAutoinstallFlatpak
             | Action::RemoveAutoinstallFlatpakQuiet
+            | Action::UpdateAutoinstall
+            | Action::UpdateAutoinstallQuiet
+            | Action::UpdateAutoinstallFlatpak
+            | Action::UpdateAutoinstallFlatpakQuiet
     )
 }
 
@@ -643,10 +690,12 @@ fn main() {
         println!("{}", "║              Hibrid Package Manager Wrapper               ║".bright_cyan());
         println!("{}", "╚════════════════════════════════════════════════════════════╝".bright_cyan());
         println!();
-        println!("{}", "Usage: hibrid [-I|-R][a][q][f] pkg".bright_white().bold());
+        println!("{}", "Usage: hibrid [-I|-R|-U|-L][a][q][f] [pkg]".bright_white().bold());
         println!();
         println!("  {} Install package", "-I".green().bold());
         println!("  {} Remove package", "-R".red().bold());
+        println!("  {} Update system or package", "-U".yellow().bold());
+        println!("  {} List installed packages", "-L".cyan().bold());
         println!();
         println!("{}", "Modifiers:".bright_white().bold());
         println!("  {} Autoinstall (skip confirmation)", "a".bright_yellow());
@@ -659,6 +708,9 @@ fn main() {
         println!("  hibrid {} firefox", "-Iq".green());
         println!("  hibrid {} package", "-R".red());
         println!("  hibrid {} spotify", "-If".bright_magenta());
+        println!("  hibrid {}", "-U".yellow());
+        println!("  hibrid {} vim", "-U".yellow());
+        println!("  hibrid {}", "-L".cyan());
         return;
     }
 
@@ -717,7 +769,104 @@ fn main() {
         return;
     }
 
+    // List handling
+    if matches!(action, Action::List | Action::ListFlatpak) {
+        if system == System::Linux {
+            if let Action::ListFlatpak = action {
+                let (status, _) = run_command_with_output_detailed("flatpak", &["list", "--app"], "flatpak", true);
+            } else {
+                match detect_linux_package_manager() {
+                    Some(manager) => {
+                        let (status, _) = run_command_with_output_detailed("sudo", &{
+                            let mut v = vec![manager.program];
+                            v.extend(manager.list_args);
+                            v
+                        }, manager.program, true);
+                    }
+                    None => println!("{}", "No supported package manager found".red()),
+                }
+            }
+        } else if system == System::Windows {
+            println!("{}", "List not yet supported for Windows".yellow());
+        } else {
+            println!("{}", "Unsupported system".red());
+        }
+        return;
+    }
+
     let packages: Vec<&str> = filtered.get(1..).unwrap_or(&[]).to_vec();
+
+    // Update handling (packages optional - empty means update all)
+    if matches!(action, Action::Update | Action::UpdateQuiet | Action::UpdateAutoinstall | Action::UpdateAutoinstallQuiet | Action::UpdateFlatpak | Action::UpdateFlatpakQuiet | Action::UpdateAutoinstallFlatpak | Action::UpdateAutoinstallFlatpakQuiet) {
+        if system == System::Linux {
+            let is_quiet = matches!(action, Action::UpdateQuiet | Action::UpdateAutoinstallQuiet | Action::UpdateFlatpakQuiet | Action::UpdateAutoinstallFlatpakQuiet);
+            let skip_confirm = is_autoinstall(action);
+
+            if let Action::UpdateFlatpak | Action::UpdateFlatpakQuiet | Action::UpdateAutoinstallFlatpak | Action::UpdateAutoinstallFlatpakQuiet = action {
+                // Flatpak update
+                if packages.is_empty() {
+                    // Update all flatpaks
+                    if !skip_confirm && !ask_confirmation() {
+                        println!("{}", "Update cancelled".yellow());
+                        return;
+                    }
+                    let (status, _) = run_command_with_output_detailed("flatpak", &["update", "-y"], "flatpak", !is_quiet);
+                    print_result(action, status, "");
+                } else {
+                    // Update specific flatpak(s)
+                    for package in &packages {
+                        if !skip_confirm && !ask_confirmation() {
+                            println!("{}", "Update cancelled".yellow());
+                            return;
+                        }
+                        let (status, _) = run_command_with_output_detailed("flatpak", &["update", "-y", package], "flatpak", !is_quiet);
+                        print_result(action, status, "");
+                    }
+                }
+            } else {
+                // System package manager update
+                match detect_linux_package_manager() {
+                    Some(manager) => {
+                        if packages.is_empty() {
+                            // Update system
+                            if !skip_confirm && !ask_confirmation() {
+                                println!("{}", "Update cancelled".yellow());
+                                return;
+                            }
+                            let (status, _) = run_command_with_output_detailed("sudo", &{
+                                let mut v = vec![manager.program];
+                                v.extend(manager.update_args);
+                                v
+                            }, manager.program, !is_quiet);
+                            print_result(action, status, "");
+                        } else {
+                            // Update specific package(s)
+                            for package in &packages {
+                                if !skip_confirm && !ask_confirmation() {
+                                    println!("{}", "Update cancelled".yellow());
+                                    return;
+                                }
+                                let (status, _) = run_command_with_output_detailed("sudo", &{
+                                    let mut v = vec![manager.program];
+                                    let mut base = manager.update_single_args.to_vec();
+                                    base.push(package);
+                                    v.extend(base);
+                                    v
+                                }, manager.program, !is_quiet);
+                                print_result(action, status, "");
+                            }
+                        }
+                    }
+                    None => println!("{}", "No supported package manager found".red()),
+                }
+            }
+        } else if system == System::Windows {
+            println!("{}", "Update not yet supported for Windows".yellow());
+        } else {
+            println!("{}", "Unsupported system".red());
+        }
+        return;
+    }
 
     if packages.is_empty() {
         println!("{}", "No package given".red());
@@ -818,6 +967,9 @@ fn main() {
                 program: "winget",
                 install_args: &["install", "--exact"],
                 remove_args: &["uninstall", "--exact"],
+                update_args: &["upgrade"],
+                update_single_args: &["upgrade", "--exact"],
+                list_args: &["list"],
                 search_args: &["search"],
             };
 
@@ -1021,6 +1173,22 @@ fn print_result(action: Action, success: bool, _info: &str) {
         (Action::RemoveAutoinstallFlatpak, false) => println!("{}", "Removal failed".red()),
         (Action::RemoveAutoinstallFlatpakQuiet, true) => println!("{}", "Removal finished".green()),
         (Action::RemoveAutoinstallFlatpakQuiet, false) => println!("{}", "Removal failed".red()),
+        (Action::Update, true) => println!("{}", "Update finished".green()),
+        (Action::Update, false) => println!("{}", "Update failed".red()),
+        (Action::UpdateQuiet, true) => println!("{}", "Update finished".green()),
+        (Action::UpdateQuiet, false) => println!("{}", "Update failed".red()),
+        (Action::UpdateAutoinstall, true) => println!("{}", "Update finished".green()),
+        (Action::UpdateAutoinstall, false) => println!("{}", "Update failed".red()),
+        (Action::UpdateAutoinstallQuiet, true) => println!("{}", "Update finished".green()),
+        (Action::UpdateAutoinstallQuiet, false) => println!("{}", "Update failed".red()),
+        (Action::UpdateFlatpak, true) => println!("{}", "Update finished".green()),
+        (Action::UpdateFlatpak, false) => println!("{}", "Update failed".red()),
+        (Action::UpdateFlatpakQuiet, true) => println!("{}", "Update finished".green()),
+        (Action::UpdateFlatpakQuiet, false) => println!("{}", "Update failed".red()),
+        (Action::UpdateAutoinstallFlatpak, true) => println!("{}", "Update finished".green()),
+        (Action::UpdateAutoinstallFlatpak, false) => println!("{}", "Update failed".red()),
+        (Action::UpdateAutoinstallFlatpakQuiet, true) => println!("{}", "Update finished".green()),
+        (Action::UpdateAutoinstallFlatpakQuiet, false) => println!("{}", "Update failed".red()),
         _ => {}
     }
 }
