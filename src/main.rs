@@ -16,21 +16,21 @@ enum System {
 #[derive(Debug, Clone, Copy)]
 enum Action {
     Install,
-    InstallDetailed,
+    InstallQuiet,
     InstallAutoinstall,
-    InstallAutoinstallDetailed,
+    InstallAutoinstallQuiet,
     InstallFlatpak,
-    InstallFlatpakDetailed,
+    InstallFlatpakQuiet,
     InstallAutoinstallFlatpak,
-    InstallAutoinstallFlatpakDetailed,
+    InstallAutoinstallFlatpakQuiet,
     Remove,
-    RemoveDetailed,
+    RemoveQuiet,
     RemoveAutoinstall,
-    RemoveAutoinstallDetailed,
+    RemoveAutoinstallQuiet,
     RemoveFlatpak,
-    RemoveFlatpakDetailed,
+    RemoveFlatpakQuiet,
     RemoveAutoinstallFlatpak,
-    RemoveAutoinstallFlatpakDetailed,
+    RemoveAutoinstallFlatpakQuiet,
     Version,
     Search,
     SearchFlatpak,
@@ -365,26 +365,26 @@ fn parse_action(flag: &str) -> Option<Action> {
     let modifiers = &flag_chars[1..];
 
     let has_a = modifiers.contains('a');
-    let has_d = modifiers.contains('d');
+    let has_q = modifiers.contains('q');
     let has_f = modifiers.contains('f');
 
-    match (base, has_a, has_d, has_f) {
+    match (base, has_a, has_q, has_f) {
         ('I', false, false, false) => Some(Action::Install),
-        ('I', false, true, false) => Some(Action::InstallDetailed),
+        ('I', false, true, false) => Some(Action::InstallQuiet),
         ('I', true, false, false) => Some(Action::InstallAutoinstall),
-        ('I', true, true, false) => Some(Action::InstallAutoinstallDetailed),
+        ('I', true, true, false) => Some(Action::InstallAutoinstallQuiet),
         ('I', false, false, true) => Some(Action::InstallFlatpak),
-        ('I', false, true, true) => Some(Action::InstallFlatpakDetailed),
+        ('I', false, true, true) => Some(Action::InstallFlatpakQuiet),
         ('I', true, false, true) => Some(Action::InstallAutoinstallFlatpak),
-        ('I', true, true, true) => Some(Action::InstallAutoinstallFlatpakDetailed),
+        ('I', true, true, true) => Some(Action::InstallAutoinstallFlatpakQuiet),
         ('R', false, false, false) => Some(Action::Remove),
-        ('R', false, true, false) => Some(Action::RemoveDetailed),
+        ('R', false, true, false) => Some(Action::RemoveQuiet),
         ('R', true, false, false) => Some(Action::RemoveAutoinstall),
-        ('R', true, true, false) => Some(Action::RemoveAutoinstallDetailed),
+        ('R', true, true, false) => Some(Action::RemoveAutoinstallQuiet),
         ('R', false, false, true) => Some(Action::RemoveFlatpak),
-        ('R', false, true, true) => Some(Action::RemoveFlatpakDetailed),
+        ('R', false, true, true) => Some(Action::RemoveFlatpakQuiet),
         ('R', true, false, true) => Some(Action::RemoveAutoinstallFlatpak),
-        ('R', true, true, true) => Some(Action::RemoveAutoinstallFlatpakDetailed),
+        ('R', true, true, true) => Some(Action::RemoveAutoinstallFlatpakQuiet),
         _ => None,
     }
 }
@@ -394,13 +394,13 @@ fn is_autoinstall(action: Action) -> bool {
     matches!(
         action,
         Action::InstallAutoinstall
-            | Action::InstallAutoinstallDetailed
+            | Action::InstallAutoinstallQuiet
             | Action::InstallAutoinstallFlatpak
-            | Action::InstallAutoinstallFlatpakDetailed
+            | Action::InstallAutoinstallFlatpakQuiet
             | Action::RemoveAutoinstall
-            | Action::RemoveAutoinstallDetailed
+            | Action::RemoveAutoinstallQuiet
             | Action::RemoveAutoinstallFlatpak
-            | Action::RemoveAutoinstallFlatpakDetailed
+            | Action::RemoveAutoinstallFlatpakQuiet
     )
 }
 
@@ -575,7 +575,7 @@ fn main() {
         println!("{}", "║          Hibrid Package Manager Wrapper v1.0              ║".bright_cyan());
         println!("{}", "╚════════════════════════════════════════════════════════════╝".bright_cyan());
         println!();
-        println!("{}", "Usage: hibrid [-I|-R|-V][a][d][f] pkg".bright_white().bold());
+        println!("{}", "Usage: hibrid [-I|-R|-V][a][q][f] pkg".bright_white().bold());
         println!();
         println!("  {} Install package", "-I".green().bold());
         println!("  {} Remove package", "-R".red().bold());
@@ -583,12 +583,13 @@ fn main() {
         println!();
         println!("{}", "Modifiers:".bright_white().bold());
         println!("  {} Autoinstall (skip confirmation)", "a".bright_yellow());
-        println!("  {} Detailed output", "d".bright_yellow());
+        println!("  {} Quiet output (suppress package manager output)", "q".bright_yellow());
         println!("  {} Use Flatpak", "f".bright_magenta());
         println!();
         println!("{}", "Examples:".bright_white().bold());
         println!("  hibrid {} vim", "-I".green());
         println!("  hibrid {} vim", "-Ia".green());
+        println!("  hibrid {} firefox", "-Iq".green());
         println!("  hibrid {} package", "-R".red());
         println!("  hibrid {} spotify", "-If".bright_magenta());
         return;
@@ -664,12 +665,12 @@ fn main() {
     }
 
     // Flatpak handling
-    if matches!(action, Action::InstallFlatpak | Action::InstallFlatpakDetailed | Action::InstallAutoinstallFlatpak | Action::InstallAutoinstallFlatpakDetailed | Action::RemoveFlatpak | Action::RemoveFlatpakDetailed | Action::RemoveAutoinstallFlatpak | Action::RemoveAutoinstallFlatpakDetailed) && system == System::Linux {
-        let is_detailed = matches!(action, Action::InstallFlatpakDetailed | Action::RemoveFlatpakDetailed | Action::InstallAutoinstallFlatpakDetailed | Action::RemoveAutoinstallFlatpakDetailed);
+    if matches!(action, Action::InstallFlatpak | Action::InstallFlatpakQuiet | Action::InstallAutoinstallFlatpak | Action::InstallAutoinstallFlatpakQuiet | Action::RemoveFlatpak | Action::RemoveFlatpakQuiet | Action::RemoveAutoinstallFlatpak | Action::RemoveAutoinstallFlatpakQuiet) && system == System::Linux {
+        let is_quiet = matches!(action, Action::InstallFlatpakQuiet | Action::RemoveFlatpakQuiet | Action::InstallAutoinstallFlatpakQuiet | Action::RemoveAutoinstallFlatpakQuiet);
         let skip_confirm = is_autoinstall(action);
 
         match action {
-            Action::InstallFlatpak | Action::InstallFlatpakDetailed | Action::InstallAutoinstallFlatpak | Action::InstallAutoinstallFlatpakDetailed => {
+            Action::InstallFlatpak | Action::InstallFlatpakQuiet | Action::InstallAutoinstallFlatpak | Action::InstallAutoinstallFlatpakQuiet => {
                 let mut all_valid = true;
                 let mut packages_info = Vec::new();
                 let mut full_app_ids = Vec::new();
@@ -691,7 +692,7 @@ fn main() {
                     return;
                 }
 
-                let title = if is_detailed { "Install Flatpak Detailed" } else { "Install Flatpak" };
+                let title = if is_quiet { "Install Flatpak Quiet" } else { "Install Flatpak" };
                 println!("{}", format_box_multiple(title, packages_info).bright_magenta());
 
                 if !skip_confirm && !ask_confirmation() {
@@ -700,11 +701,11 @@ fn main() {
                 }
 
                 for full_app_id in full_app_ids {
-                    let (status, _) = run_command_with_output_detailed("flatpak", &["install", "-y", "flathub", &full_app_id], "flatpak", is_detailed);
+                    let (status, _) = run_command_with_output_detailed("flatpak", &["install", "-y", "flathub", &full_app_id], "flatpak", !is_quiet);
                     print_result(action, status, "");
                 }
             }
-            Action::RemoveFlatpak | Action::RemoveFlatpakDetailed | Action::RemoveAutoinstallFlatpak | Action::RemoveAutoinstallFlatpakDetailed => {
+            Action::RemoveFlatpak | Action::RemoveFlatpakQuiet | Action::RemoveAutoinstallFlatpak | Action::RemoveAutoinstallFlatpakQuiet => {
                 let mut all_valid = true;
                 let mut packages_info = Vec::new();
                 let mut app_ids = Vec::new();
@@ -726,7 +727,7 @@ fn main() {
                     return;
                 }
 
-                let title = if is_detailed { "Remove Flatpak Detailed" } else { "Remove Flatpak" };
+                let title = if is_quiet { "Remove Flatpak Quiet" } else { "Remove Flatpak" };
                 println!("{}", format_box_multiple(title, packages_info).bright_magenta());
 
                 if !skip_confirm && !ask_removal_confirmation() {
@@ -735,7 +736,7 @@ fn main() {
                 }
 
                 for app_id in app_ids {
-                    let (status, _) = run_command_with_output_detailed("flatpak", &["uninstall", "-y", &app_id], "flatpak", is_detailed);
+                    let (status, _) = run_command_with_output_detailed("flatpak", &["uninstall", "-y", &app_id], "flatpak", !is_quiet);
                     print_result(action, status, "");
                 }
             }
@@ -763,11 +764,11 @@ fn main() {
         System::Linux => {
             match detect_linux_package_manager() {
                 Some(manager) => {
-                    let is_detailed = matches!(action, Action::InstallDetailed | Action::RemoveDetailed | Action::InstallAutoinstallDetailed | Action::RemoveAutoinstallDetailed);
+                    let is_quiet = matches!(action, Action::InstallQuiet | Action::RemoveQuiet | Action::InstallAutoinstallQuiet | Action::RemoveAutoinstallQuiet);
                     let skip_confirm = is_autoinstall(action);
 
                     match action {
-                        Action::Install | Action::InstallDetailed | Action::InstallAutoinstall | Action::InstallAutoinstallDetailed => {
+                        Action::Install | Action::InstallQuiet | Action::InstallAutoinstall | Action::InstallAutoinstallQuiet => {
                             let mut all_valid = true;
                             let mut packages_info = Vec::new();
 
@@ -799,11 +800,11 @@ fn main() {
                                     base.push(package);
                                     v.extend(base);
                                     v
-                                }, manager.program, is_detailed);
+                                }, manager.program, !is_quiet);
                                 print_result(action, status, "");
                             }
                         }
-                        Action::Remove | Action::RemoveDetailed | Action::RemoveAutoinstall | Action::RemoveAutoinstallDetailed => {
+                        Action::Remove | Action::RemoveQuiet | Action::RemoveAutoinstall | Action::RemoveAutoinstallQuiet => {
                             let mut all_valid = true;
                             let mut packages_info = Vec::new();
 
@@ -835,7 +836,7 @@ fn main() {
                                     base.push(package);
                                     v.extend(base);
                                     v
-                                }, manager.program, is_detailed);
+                                }, manager.program, !is_quiet);
                                 print_result(action, status, "");
                             }
                         }
@@ -923,36 +924,36 @@ fn print_result(action: Action, success: bool, _info: &str) {
     match (action, success) {
         (Action::Install, true) => println!("{}", "Install finished".green()),
         (Action::Install, false) => println!("{}", "Install failed".red()),
-        (Action::InstallDetailed, true) => println!("{}", "Install finished".green()),
-        (Action::InstallDetailed, false) => println!("{}", "Install failed".red()),
+        (Action::InstallQuiet, true) => println!("{}", "Install finished".green()),
+        (Action::InstallQuiet, false) => println!("{}", "Install failed".red()),
         (Action::InstallAutoinstall, true) => println!("{}", "Install finished".green()),
         (Action::InstallAutoinstall, false) => println!("{}", "Install failed".red()),
-        (Action::InstallAutoinstallDetailed, true) => println!("{}", "Install finished".green()),
-        (Action::InstallAutoinstallDetailed, false) => println!("{}", "Install failed".red()),
+        (Action::InstallAutoinstallQuiet, true) => println!("{}", "Install finished".green()),
+        (Action::InstallAutoinstallQuiet, false) => println!("{}", "Install failed".red()),
         (Action::InstallFlatpak, true) => println!("{}", "Install finished".green()),
         (Action::InstallFlatpak, false) => println!("{}", "Install failed".red()),
-        (Action::InstallFlatpakDetailed, true) => println!("{}", "Install finished".green()),
-        (Action::InstallFlatpakDetailed, false) => println!("{}", "Install failed".red()),
+        (Action::InstallFlatpakQuiet, true) => println!("{}", "Install finished".green()),
+        (Action::InstallFlatpakQuiet, false) => println!("{}", "Install failed".red()),
         (Action::InstallAutoinstallFlatpak, true) => println!("{}", "Install finished".green()),
         (Action::InstallAutoinstallFlatpak, false) => println!("{}", "Install failed".red()),
-        (Action::InstallAutoinstallFlatpakDetailed, true) => println!("{}", "Install finished".green()),
-        (Action::InstallAutoinstallFlatpakDetailed, false) => println!("{}", "Install failed".red()),
+        (Action::InstallAutoinstallFlatpakQuiet, true) => println!("{}", "Install finished".green()),
+        (Action::InstallAutoinstallFlatpakQuiet, false) => println!("{}", "Install failed".red()),
         (Action::Remove, true) => println!("{}", "Removal finished".green()),
         (Action::Remove, false) => println!("{}", "Removal failed".red()),
-        (Action::RemoveDetailed, true) => println!("{}", "Removal finished".green()),
-        (Action::RemoveDetailed, false) => println!("{}", "Removal failed".red()),
+        (Action::RemoveQuiet, true) => println!("{}", "Removal finished".green()),
+        (Action::RemoveQuiet, false) => println!("{}", "Removal failed".red()),
         (Action::RemoveAutoinstall, true) => println!("{}", "Removal finished".green()),
         (Action::RemoveAutoinstall, false) => println!("{}", "Removal failed".red()),
-        (Action::RemoveAutoinstallDetailed, true) => println!("{}", "Removal finished".green()),
-        (Action::RemoveAutoinstallDetailed, false) => println!("{}", "Removal failed".red()),
+        (Action::RemoveAutoinstallQuiet, true) => println!("{}", "Removal finished".green()),
+        (Action::RemoveAutoinstallQuiet, false) => println!("{}", "Removal failed".red()),
         (Action::RemoveFlatpak, true) => println!("{}", "Removal finished".green()),
         (Action::RemoveFlatpak, false) => println!("{}", "Removal failed".red()),
-        (Action::RemoveFlatpakDetailed, true) => println!("{}", "Removal finished".green()),
-        (Action::RemoveFlatpakDetailed, false) => println!("{}", "Removal failed".red()),
+        (Action::RemoveFlatpakQuiet, true) => println!("{}", "Removal finished".green()),
+        (Action::RemoveFlatpakQuiet, false) => println!("{}", "Removal failed".red()),
         (Action::RemoveAutoinstallFlatpak, true) => println!("{}", "Removal finished".green()),
         (Action::RemoveAutoinstallFlatpak, false) => println!("{}", "Removal failed".red()),
-        (Action::RemoveAutoinstallFlatpakDetailed, true) => println!("{}", "Removal finished".green()),
-        (Action::RemoveAutoinstallFlatpakDetailed, false) => println!("{}", "Removal failed".red()),
+        (Action::RemoveAutoinstallFlatpakQuiet, true) => println!("{}", "Removal finished".green()),
+        (Action::RemoveAutoinstallFlatpakQuiet, false) => println!("{}", "Removal failed".red()),
         _ => {}
     }
 }

@@ -53,17 +53,18 @@ The binary will be at `target/release/hibrid` (or `hibrid.exe` on Windows).
 ## Usage
 
 ```bash
-hibrid [-I|-R|-V][a][d][f] package
+hibrid [-I|-R|-V][a][q][f] package
 ```
 
 **Main commands:**
 - `-I` Install a package
 - `-R` Remove a package
 - `-V` Show version
+- `-S` Search a package and list information
 
 **Modifiers:**
 - `a` Autoinstall (skip confirmation prompt)
-- `d` Detailed output
+- `q` Quiet output (suppress package manager output)
 - `f` Use Flatpak backend
 
 **Examples:**
@@ -72,8 +73,9 @@ hibrid -I vim
 hibrid -Ia firefox
 hibrid -R vim
 hibrid -If spotify
-hibrid -Id vlc
+hibrid -Iq vlc
 hibrid -V
+hibrid -S mpv
 ```
 
 ---
