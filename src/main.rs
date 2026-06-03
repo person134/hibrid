@@ -554,12 +554,11 @@ fn extract_flatpak_description(app_id: &str) -> String {
     match Command::new("flatpak").args(&["remote-info", "flathub", app_id]).output() {
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout);
-            let lines: Vec<&str> = stdout.lines().collect();
 
-            if !lines.is_empty() {
-                let first_line = lines[0].trim();
-                if let Some(desc_part) = first_line.split(" - ").nth(1) {
-                    return desc_part.trim().to_string();
+            if let Some(first_line) = stdout.lines().next() {
+                let trimmed = first_line.trim();
+                if let Some(pos) = trimmed.find(" - ") {
+                    return trimmed[pos + 3..].trim().to_string();
                 }
             }
             String::new()
