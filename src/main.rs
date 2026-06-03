@@ -167,24 +167,20 @@ fn fuzzy_match_flatpak_with_size(query: &str) -> Option<(String, String)> {
                 }
 
                 let mut app_id = String::new();
-                let mut size = String::new();
 
-                // Extract app ID and size from the line
+                // Extract app ID from the line
                 let parts: Vec<&str> = line.split_whitespace().collect();
 
-                for (i, part) in parts.iter().enumerate() {
+                for part in parts.iter() {
                     if (part.starts_with("org.") || part.starts_with("com.")) && part.contains('.') {
                         app_id = part.to_string();
-                        // Size is typically at the end or near the end
-                        if i + 1 < parts.len() {
-                            size = parts[i + 1].to_string();
-                        }
                         break;
                     }
                 }
 
                 if !app_id.is_empty() {
-                    return Some((app_id, size));
+                    // Return app ID with empty size (flatpak search shows version, not size)
+                    return Some((app_id, String::new()));
                 }
             }
             None
