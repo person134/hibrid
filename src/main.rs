@@ -32,6 +32,8 @@ enum Action {
     RemoveAutoinstallFlatpak,
     RemoveAutoinstallFlatpakDetailed,
     Version,
+    Search,
+    SearchFlatpak,
 }
 
 /// Represents a package manager and its commands
@@ -339,26 +341,33 @@ fn parse_action(flag: &str) -> Option<Action> {
     if !flag.starts_with('-') || flag.len() < 2 {
         return None;
     }
-    
-    let flag_chars = &flag[1..]; // Remove the leading '-'
+
+    let flag_chars = &flag[1..];
     let base = flag_chars.chars().next().unwrap();
-    
-    // Handle V separately - it cannot have modifiers
+
     if base == 'V' {
         return if flag_chars.len() == 1 {
             Some(Action::Version)
         } else {
-            None // -V with any modifiers is invalid
+            None
         };
     }
-    
+
+    if base == 'S' {
+        let modifiers = &flag_chars[1..];
+        let has_f = modifiers.contains('f');
+        return match has_f {
+            true => Some(Action::SearchFlatpak),
+            false => if modifiers.is_empty() { Some(Action::Search) } else { None },
+        };
+    }
+
     let modifiers = &flag_chars[1..];
-    
-    // Check for presence of modifier characters in any order
+
     let has_a = modifiers.contains('a');
     let has_d = modifiers.contains('d');
     let has_f = modifiers.contains('f');
-    
+
     match (base, has_a, has_d, has_f) {
         ('I', false, false, false) => Some(Action::Install),
         ('I', false, true, false) => Some(Action::InstallDetailed),
@@ -393,6 +402,72 @@ fn is_autoinstall(action: Action) -> bool {
             | Action::RemoveAutoinstallFlatpak
             | Action::RemoveAutoinstallFlatpakDetailed
     )
+}
+
+struct SearchResult {
+    name: String,
+    version: String,
+    description: String,
+    size: String,
+    repository: String,
+}
+
+fn format_search_box(result: &SearchResult) -> String {
+    let width = 50;
+    let mut box_str = String::new();
+
+    box_str.push_str(&format!("┌{}┐\n", "─".repeat(width - 2)));
+    box_str.push_str(&format!("│ {:<48} │\n", format!("Package: {}", result.name)));
+    box_str.push_str(&format!("│ {:<48} │\n", format!("Version: {}", result.version)));
+
+    if !result.repository.is_empty() {
+        box_str.push_str(&format!("│ {:<48} │\n", format!("Repository: {}", result.repository)));
+    }
+
+    if !result.size.is_empty() {
+        box_str.push_str(&format!("│ {:<48} │\n", format!("Size: {}", result.size)));
+    }
+
+    if !result.description.is_empty() {
+        let desc = if result.description.len() > 45 {
+            format!("{}...", &result.description[..42])
+        } else {
+            result.description.clone()
+        };
+        box_str.push_str(&format!("│ {:<48} │\n", format!("Description: {}", desc)));
+    }
+
+    box_str.push_str(&format!("└{}┘\n", "─".repeat(width - 2)));
+
+    box_str
+}
+
+fn search_package_linux(package: &str, manager: &PackageManager) -> Option<SearchResult> {
+    let (repo, size) = manager.search_info(package);
+
+    if size.is_empty() {
+        return None;
+    }
+
+    Some(SearchResult {
+        name: package.to_string(),
+        version: String::new(),
+        description: String::new(),
+        size,
+        repository: repo,
+    })
+}
+
+fn search_package_flatpak(package: &str) -> Option<SearchResult> {
+    let (_app_id, size) = fuzzy_match_flatpak_with_size(package)?;
+
+    Some(SearchResult {
+        name: package.to_string(),
+        version: String::new(),
+        description: String::new(),
+        size,
+        repository: "flathub".to_string(),
+    })
 }
 
 fn main() {
@@ -438,6 +513,49 @@ fn main() {
         println!("{}", "╔════════════════════════════════════════════════════════════╗".bright_cyan());
         println!("{} {}", "║".bright_cyan(), "Hibrid package manager wrapper v1.0".bright_cyan().bold());
         println!("{}", "╚════════════════════════════════════════════════════════════╝".bright_cyan());
+        return;
+    }
+
+    // Search handling
+    if matches!(action, Action::Search | Action::SearchFlatpak) {
+        let packages: Vec<&str> = filtered.get(1..).unwrap_or(&[]).to_vec();
+        if packages.is_empty() {
+            println!("{}", "No package given".red());
+            exit(1);
+        }
+
+        let package = packages[0];
+
+        if let Action::SearchFlatpak = action {
+            if system == System::Linux {
+                match search_package_flatpak(package) {
+                    Some(result) => println!("{}", format_search_box(&result).bright_cyan()),
+                    None => println!("{}", format!("{}: Package not found", package).red()),
+                }
+            } else {
+                println!("{}", "Flatpak search only available on Linux".red());
+            }
+        } else {
+            match system {
+                System::Linux => {
+                    match detect_linux_package_manager() {
+                        Some(manager) => {
+                            match search_package_linux(package, &manager) {
+                                Some(result) => println!("{}", format_search_box(&result).bright_cyan()),
+                                None => println!("{}", format!("{}: Package not found", package).red()),
+                            }
+                        }
+                        None => println!("{}", "No supported package manager found".red()),
+                    }
+                }
+                System::Windows => {
+                    println!("{}", "Search not yet supported for Windows".yellow());
+                }
+                System::Unknown => {
+                    println!("{}", "Unsupported system".red());
+                }
+            }
+        }
         return;
     }
 
