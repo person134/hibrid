@@ -246,28 +246,6 @@ fn ask_removal_confirmation() -> bool {
     input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes")
 }
 
-/// Format action for display
-fn format_action(action: Action) -> &'static str {
-    match action {
-        Action::Install => "Install",
-        Action::InstallDetailed => "Install Detailed",
-        Action::InstallAutoinstall => "Install Autoinstall",
-        Action::InstallAutoinstallDetailed => "Install Autoinstall Detailed",
-        Action::InstallFlatpak => "Install Flatpak",
-        Action::InstallFlatpakDetailed => "Install Flatpak Detailed",
-        Action::InstallAutoinstallFlatpak => "Install Flatpak Autoinstall",
-        Action::InstallAutoinstallFlatpakDetailed => "Install Flatpak Autoinstall Detailed",
-        Action::Remove => "Remove",
-        Action::RemoveDetailed => "Remove Detailed",
-        Action::RemoveAutoinstall => "Remove Autoinstall",
-        Action::RemoveAutoinstallDetailed => "Remove Autoinstall Detailed",
-        Action::RemoveFlatpak => "Remove Flatpak",
-        Action::RemoveFlatpakDetailed => "Remove Flatpak Detailed",
-        Action::RemoveAutoinstallFlatpak => "Remove Flatpak Autoinstall",
-        Action::RemoveAutoinstallFlatpakDetailed => "Remove Flatpak Autoinstall Detailed",
-        Action::Version => "Version",
-    }
-}
 
 /// Check if a command exists (silently)
 fn command_exists(program: &str) -> bool {
@@ -428,68 +406,68 @@ fn main() {
         return;
     }
 
-    let package = filtered.get(1).unwrap_or(&"");
+    let packages: Vec<&str> = filtered.get(1..).unwrap_or(&[]).to_vec();
 
-    if package.is_empty() {
+    if packages.is_empty() {
         println!("{}", "No package given".red());
         exit(1);
     }
 
     // Flatpak handling
     if matches!(action, Action::InstallFlatpak | Action::InstallFlatpakDetailed | Action::InstallAutoinstallFlatpak | Action::InstallAutoinstallFlatpakDetailed | Action::RemoveFlatpak | Action::RemoveFlatpakDetailed | Action::RemoveAutoinstallFlatpak | Action::RemoveAutoinstallFlatpakDetailed) && system == System::Linux {
-        println!("{}", format!("╭─ {} ─╮", format_action(action)).bright_magenta().bold());
-
         let is_detailed = matches!(action, Action::InstallFlatpakDetailed | Action::RemoveFlatpakDetailed | Action::InstallAutoinstallFlatpakDetailed | Action::RemoveAutoinstallFlatpakDetailed);
         let skip_confirm = is_autoinstall(action);
 
-        match action {
-            Action::InstallFlatpak | Action::InstallFlatpakDetailed | Action::InstallAutoinstallFlatpak | Action::InstallAutoinstallFlatpakDetailed => {
-                // Fuzzy match the package name to get the full app ID
-                let full_app_id = match fuzzy_match_flatpak(package) {
-                    Some(id) => id,
-                    None => {
-                        println!("{}", "Package not found".red());
-                        return;
+        for package in &packages {
+            match action {
+                Action::InstallFlatpak | Action::InstallFlatpakDetailed | Action::InstallAutoinstallFlatpak | Action::InstallAutoinstallFlatpakDetailed => {
+                    // Fuzzy match the package name to get the full app ID
+                    let full_app_id = match fuzzy_match_flatpak(package) {
+                        Some(id) => id,
+                        None => {
+                            println!("{}", "Package not found".red());
+                            continue;
+                        }
+                    };
+
+                    println!("{}", format_box("Install Flatpak", package, "flathub", "").bright_magenta());
+
+                    if !skip_confirm && !ask_confirmation() {
+                        println!("{}", "Installation cancelled".yellow());
+                        continue;
                     }
-                };
 
-                println!("{}", format_box("Install Flatpak", package, "flathub", "").bright_magenta());
-
-                if !skip_confirm && !ask_confirmation() {
-                    println!("{}", "Installation cancelled".yellow());
-                    return;
+                    let (status, _) = run_command_with_output_detailed("flatpak", &["install", "-y", "-d", "flathub", &full_app_id], "flatpak", is_detailed);
+                    print_result(action, status, "");
                 }
+                Action::RemoveFlatpak | Action::RemoveFlatpakDetailed | Action::RemoveAutoinstallFlatpak | Action::RemoveAutoinstallFlatpakDetailed => {
+                    // First try with the provided package name, otherwise use fuzzy search result
+                    let mut app_id = package.to_string();
 
-                let (status, _) = run_command_with_output_detailed("flatpak", &["install", "-y", "-d", "flathub", &full_app_id], "flatpak", is_detailed);
-                print_result(action, status, "");
-            }
-            Action::RemoveFlatpak | Action::RemoveFlatpakDetailed | Action::RemoveAutoinstallFlatpak | Action::RemoveAutoinstallFlatpakDetailed => {
-                // First try with the provided package name, otherwise use fuzzy search result
-                let mut app_id = package.to_string();
-
-                // If package doesn't look like an app ID, try fuzzy match
-                if !package.contains(".") {
-                    if let Some(id) = fuzzy_match_flatpak(package) {
-                        app_id = id;
+                    // If package doesn't look like an app ID, try fuzzy match
+                    if !package.contains(".") {
+                        if let Some(id) = fuzzy_match_flatpak(package) {
+                            app_id = id;
+                        }
                     }
+
+                    println!("{}", format_box("Remove Flatpak", package, "", "").bright_magenta());
+
+                    if !skip_confirm && !ask_removal_confirmation() {
+                        println!("{}", "Removal cancelled".yellow());
+                        continue;
+                    }
+
+                    let (status, _) = run_command_with_output_detailed("flatpak", &["uninstall", "-y", &app_id], "flatpak", is_detailed);
+                    print_result(action, status, "");
                 }
-
-                println!("{}", format_box("Remove Flatpak", package, "", "").bright_magenta());
-
-                if !skip_confirm && !ask_removal_confirmation() {
-                    println!("{}", "Removal cancelled".yellow());
-                    return;
-                }
-
-                let (status, _) = run_command_with_output_detailed("flatpak", &["uninstall", "-y", &app_id], "flatpak", is_detailed);
-                print_result(action, status, "");
+                _ => {}
             }
-            _ => {}
         }
         return;
     }
 
-    let (success, info) = match system {
+    let (_success, _info) = match system {
         System::Windows => {
             let winget = PackageManager {
                 program: "winget",
@@ -497,7 +475,12 @@ fn main() {
                 remove_args: &["uninstall", "--exact"],
                 search_args: &["search"],
             };
-            winget.run(action, package)
+
+            for package in &packages {
+                let (status, info) = winget.run(action, package);
+                print_result(action, status, &info);
+            }
+            (true, String::new())
         }
 
         System::Linux => {
@@ -508,54 +491,74 @@ fn main() {
 
                     match action {
                         Action::Install | Action::InstallDetailed | Action::InstallAutoinstall | Action::InstallAutoinstallDetailed => {
-                            // Show package info and ask for confirmation before installing
-                            let (repo, size) = manager.search_info(package);
+                            let mut all_valid = true;
 
-                            // Check if package was found
-                            if size.is_empty() {
-                                println!("{}", "Package not found".red());
-                                return;
+                            for package in &packages {
+                                let (repo, size) = manager.search_info(package);
+                                if size.is_empty() {
+                                    println!("{}", format!("{}: Package not found", package).red());
+                                    all_valid = false;
+                                    continue;
+                                }
+                                println!("{}", format_box("Install", package, &repo, &size).bright_cyan());
                             }
 
-                            println!("{}", format_box("Install", package, &repo, &size).bright_cyan());
+                            if !all_valid {
+                                return;
+                            }
 
                             if !skip_confirm && !ask_confirmation() {
                                 println!("{}", "Installation cancelled".yellow());
                                 return;
                             }
+
+                            for package in &packages {
+                                let (status, _) = run_command_with_output_detailed("sudo", &{
+                                    let mut v = vec![manager.program];
+                                    let mut base = manager.install_args.to_vec();
+                                    base.push(package);
+                                    v.extend(base);
+                                    v
+                                }, manager.program, is_detailed);
+                                print_result(action, status, "");
+                            }
                         }
                         Action::Remove | Action::RemoveDetailed | Action::RemoveAutoinstall | Action::RemoveAutoinstallDetailed => {
-                            // Show removal info and ask for confirmation before removing
-                            let (_, size) = manager.search_info(package);
+                            let mut all_valid = true;
 
-                            // Check if package exists/is installed
-                            if size.is_empty() {
-                                println!("{}", "Package not installed or doesn't exist".red());
-                                return;
+                            for package in &packages {
+                                let (_, size) = manager.search_info(package);
+                                if size.is_empty() {
+                                    println!("{}", format!("{}: Package not installed or doesn't exist", package).red());
+                                    all_valid = false;
+                                    continue;
+                                }
+                                println!("{}", format_box("Remove", package, "", &size).bright_red());
                             }
 
-                            println!("{}", format_box("Remove", package, "", &size).bright_red());
+                            if !all_valid {
+                                return;
+                            }
 
                             if !skip_confirm && !ask_removal_confirmation() {
                                 println!("{}", "Removal cancelled".yellow());
                                 return;
                             }
+
+                            for package in &packages {
+                                let (status, _) = run_command_with_output_detailed("sudo", &{
+                                    let mut v = vec![manager.program];
+                                    let mut base = manager.remove_args.to_vec();
+                                    base.push(package);
+                                    v.extend(base);
+                                    v
+                                }, manager.program, is_detailed);
+                                print_result(action, status, "");
+                            }
                         }
                         _ => {}
                     }
-
-                    let (status, _) = run_command_with_output_detailed("sudo", &{
-                        let mut v = vec![manager.program];
-                        let mut base = match action {
-                            Action::Install | Action::InstallDetailed => manager.install_args.to_vec(),
-                            Action::Remove | Action::RemoveDetailed => manager.remove_args.to_vec(),
-                            _ => vec![],
-                        };
-                        base.push(package);
-                        v.extend(base);
-                        v
-                    }, manager.program, is_detailed);
-                    (status, String::new())
+                    (true, String::new())
                 }
                 None => {
                     println!("{}", "No supported package manager found".red());
@@ -569,9 +572,8 @@ fn main() {
             (false, String::new())
         }
     };
-
-    print_result(action, success, &info);
 }
+
 
 
 fn format_box(title: &str, package: &str, repo: &str, size: &str) -> String {
