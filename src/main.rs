@@ -151,6 +151,17 @@ fn extract_package_info(output: &str, pkg_manager: &str) -> String {
     String::new()
 }
 
+/// Check if a flatpak is installed
+fn is_flatpak_installed(app_id: &str) -> bool {
+    match Command::new("flatpak").args(&["list", "--app", "--columns", "application"]).output() {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            stdout.lines().any(|line| line.trim() == app_id)
+        }
+        Err(_) => false,
+    }
+}
+
 /// Fuzzy match flatpak app ID
 fn fuzzy_match_flatpak(query: &str) -> Option<String> {
     fuzzy_match_flatpak_with_size(query).map(|(id, _)| id)
@@ -768,11 +779,18 @@ fn main() {
                         }
                     }
 
+                    // Check if the flatpak is actually installed
+                    if !is_flatpak_installed(&app_id) {
+                        println!("{}", format!("{}: Package not installed or doesn't exist", package).red());
+                        all_valid = false;
+                        continue;
+                    }
+
                     packages_info.push((package.to_string(), String::new(), String::new()));
                     app_ids.push(app_id);
                 }
 
-                if packages_info.is_empty() {
+                if !all_valid || packages_info.is_empty() {
                     return;
                 }
 
