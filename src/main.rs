@@ -418,51 +418,76 @@ fn main() {
         let is_detailed = matches!(action, Action::InstallFlatpakDetailed | Action::RemoveFlatpakDetailed | Action::InstallAutoinstallFlatpakDetailed | Action::RemoveAutoinstallFlatpakDetailed);
         let skip_confirm = is_autoinstall(action);
 
-        for package in &packages {
-            match action {
-                Action::InstallFlatpak | Action::InstallFlatpakDetailed | Action::InstallAutoinstallFlatpak | Action::InstallAutoinstallFlatpakDetailed => {
-                    // Fuzzy match the package name to get the full app ID
+        match action {
+            Action::InstallFlatpak | Action::InstallFlatpakDetailed | Action::InstallAutoinstallFlatpak | Action::InstallAutoinstallFlatpakDetailed => {
+                let mut all_valid = true;
+                let mut packages_info = Vec::new();
+                let mut full_app_ids = Vec::new();
+
+                for package in &packages {
                     let full_app_id = match fuzzy_match_flatpak(package) {
                         Some(id) => id,
                         None => {
-                            println!("{}", "Package not found".red());
+                            println!("{}", format!("{}: Package not found", package).red());
+                            all_valid = false;
                             continue;
                         }
                     };
+                    packages_info.push((package.to_string(), "flathub".to_string(), String::new()));
+                    full_app_ids.push(full_app_id);
+                }
 
-                    println!("{}", format_box("Install Flatpak", package, "flathub", "").bright_magenta());
+                if !all_valid || packages_info.is_empty() {
+                    return;
+                }
 
-                    if !skip_confirm && !ask_confirmation() {
-                        println!("{}", "Installation cancelled".yellow());
-                        continue;
-                    }
+                println!("{}", format_box_multiple("Install Flatpak", packages_info).bright_magenta());
 
+                if !skip_confirm && !ask_confirmation() {
+                    println!("{}", "Installation cancelled".yellow());
+                    return;
+                }
+
+                for full_app_id in full_app_ids {
                     let (status, _) = run_command_with_output_detailed("flatpak", &["install", "-y", "-d", "flathub", &full_app_id], "flatpak", is_detailed);
                     print_result(action, status, "");
                 }
-                Action::RemoveFlatpak | Action::RemoveFlatpakDetailed | Action::RemoveAutoinstallFlatpak | Action::RemoveAutoinstallFlatpakDetailed => {
-                    // First try with the provided package name, otherwise use fuzzy search result
+            }
+            Action::RemoveFlatpak | Action::RemoveFlatpakDetailed | Action::RemoveAutoinstallFlatpak | Action::RemoveAutoinstallFlatpakDetailed => {
+                let mut all_valid = true;
+                let mut packages_info = Vec::new();
+                let mut app_ids = Vec::new();
+
+                for package in &packages {
                     let mut app_id = package.to_string();
 
-                    // If package doesn't look like an app ID, try fuzzy match
                     if !package.contains(".") {
                         if let Some(id) = fuzzy_match_flatpak(package) {
                             app_id = id;
                         }
                     }
 
-                    println!("{}", format_box("Remove Flatpak", package, "", "").bright_magenta());
+                    packages_info.push((package.to_string(), String::new(), String::new()));
+                    app_ids.push(app_id);
+                }
 
-                    if !skip_confirm && !ask_removal_confirmation() {
-                        println!("{}", "Removal cancelled".yellow());
-                        continue;
-                    }
+                if packages_info.is_empty() {
+                    return;
+                }
 
+                println!("{}", format_box_multiple("Remove Flatpak", packages_info).bright_magenta());
+
+                if !skip_confirm && !ask_removal_confirmation() {
+                    println!("{}", "Removal cancelled".yellow());
+                    return;
+                }
+
+                for app_id in app_ids {
                     let (status, _) = run_command_with_output_detailed("flatpak", &["uninstall", "-y", &app_id], "flatpak", is_detailed);
                     print_result(action, status, "");
                 }
-                _ => {}
             }
+            _ => {}
         }
         return;
     }
