@@ -519,15 +519,53 @@ fn extract_description_from_manager(package: &str, manager: &PackageManager) -> 
 }
 
 fn search_package_flatpak(package: &str) -> Option<SearchResult> {
-    let (_app_id, size) = fuzzy_match_flatpak_with_size(package)?;
+    let (app_id, size) = fuzzy_match_flatpak_with_size(package)?;
+
+    let version = extract_flatpak_version(&app_id);
+    let description = extract_flatpak_description(&app_id);
 
     Some(SearchResult {
         name: package.to_string(),
-        version: String::new(),
-        description: String::new(),
+        version,
+        description,
         size,
         repository: "flathub".to_string(),
     })
+}
+
+fn extract_flatpak_version(app_id: &str) -> String {
+    match Command::new("flatpak").args(&["remote-info", "flathub", app_id]).output() {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if line.contains("Version:") {
+                    if let Some(version) = line.split(':').nth(1) {
+                        return version.trim().to_string();
+                    }
+                }
+            }
+            String::new()
+        }
+        Err(_) => String::new(),
+    }
+}
+
+fn extract_flatpak_description(app_id: &str) -> String {
+    match Command::new("flatpak").args(&["remote-info", "flathub", app_id]).output() {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let lines: Vec<&str> = stdout.lines().collect();
+
+            if !lines.is_empty() {
+                let first_line = lines[0].trim();
+                if let Some(desc_part) = first_line.split(" - ").nth(1) {
+                    return desc_part.trim().to_string();
+                }
+            }
+            String::new()
+        }
+        Err(_) => String::new(),
+    }
 }
 
 fn main() {
