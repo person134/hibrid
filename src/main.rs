@@ -489,13 +489,6 @@ fn main() {
         return;
     }
 
-    let header_color = if matches!(action, Action::Install | Action::InstallDetailed | Action::InstallAutoinstall | Action::InstallAutoinstallDetailed | Action::InstallFlatpak | Action::InstallFlatpakDetailed | Action::InstallAutoinstallFlatpak | Action::InstallAutoinstallFlatpakDetailed) {
-        format!("╭─ {} ─╮", format_action(action)).bright_green()
-    } else {
-        format!("╭─ {} ─╮", format_action(action)).bright_red()
-    };
-    println!("{}", header_color.bold());
-
     let (success, info) = match system {
         System::Windows => {
             let winget = PackageManager {
@@ -591,19 +584,19 @@ fn format_box(title: &str, package: &str, repo: &str, size: &str) -> String {
     let mut result = String::new();
 
     let dashes = "─".repeat(width - title_str.len() - 2);
-    result.push_str(&format!("{}┌{}{}┐{}\n", "", title_str, dashes, ""));
+    result.push_str(&format!("┌{}{}┐\n", title_str, dashes));
 
     let pkg_line = format!("Package: {}", package);
-    result.push_str(&format!("│ {:<38} │\n", pkg_line));
+    result.push_str(&format!("│ {:<36} │\n", pkg_line));
 
     if !repo.is_empty() {
         let repo_line = format!("Repository: {}", repo);
-        result.push_str(&format!("│ {:<38} │\n", repo_line));
+        result.push_str(&format!("│ {:<36} │\n", repo_line));
     }
 
     if !size.is_empty() {
         let size_line = format!("Size: {}", size);
-        result.push_str(&format!("│ {:<38} │\n", size_line));
+        result.push_str(&format!("│ {:<36} │\n", size_line));
     }
 
     result.push_str(&format!("└{}┘\n", "─".repeat(width - 2)));
