@@ -162,15 +162,14 @@ fn fuzzy_match_flatpak_with_size(query: &str) -> Option<(String, String)> {
     match Command::new("flatpak").args(&["search", query]).output() {
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout);
+            let mut best_match = None;
+
             for line in stdout.lines() {
-                // Skip header line and empty lines
                 if line.contains("Name") || line.trim().is_empty() {
                     continue;
                 }
 
                 let mut app_id = String::new();
-
-                // Extract app ID from the line
                 let parts: Vec<&str> = line.split_whitespace().collect();
 
                 for part in parts.iter() {
@@ -181,12 +180,19 @@ fn fuzzy_match_flatpak_with_size(query: &str) -> Option<(String, String)> {
                 }
 
                 if !app_id.is_empty() {
-                    // Get size from flatpak info command
-                    let size = get_flatpak_size(&app_id);
-                    return Some((app_id, size));
+                    // Prefer main apps over plugins (skip if app_id contains .Plugin)
+                    if !app_id.contains(".Plugin") {
+                        let size = get_flatpak_size(&app_id);
+                        return Some((app_id, size));
+                    } else if best_match.is_none() {
+                        // Keep plugin as fallback if no main app found
+                        let size = get_flatpak_size(&app_id);
+                        best_match = Some((app_id, size));
+                    }
                 }
             }
-            None
+
+            best_match
         }
         Err(_) => None,
     }
