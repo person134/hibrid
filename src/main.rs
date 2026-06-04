@@ -12,6 +12,7 @@ use std::time::Duration;
 enum System {
     Windows,
     Linux,
+    MacOS,
     Unknown,
 }
 
@@ -189,6 +190,20 @@ fn extract_package_info(output: &str, pkg_manager: &str) -> String {
                 }
             }
         }
+        "emerge" => {
+            for line in output.lines() {
+                if line.contains("Total:") || line.contains("ebuild") {
+                    return line.trim().to_string();
+                }
+            }
+        }
+        "brew" => {
+            for line in output.lines() {
+                if line.contains("==>") {
+                    return line.trim().to_string();
+                }
+            }
+        }
         _ => {}
     }
     String::new()
@@ -280,6 +295,8 @@ fn get_installed_package_info(program: &str, package: &str, pkg_manager: &str) -
         "pacman" => vec!["-Qi", package],
         "apt" => vec!["show", package],
         "dnf" => vec!["list", "installed", package],
+        "emerge" => vec!["--info", package],
+        "brew" => vec!["info", "--installed", package],
         _ => return (String::new(), String::new()),
     };
 
@@ -327,6 +344,31 @@ fn parse_installed_output(output: &str, pkg_manager: &str) -> (String, String) {
             }
             (String::new(), String::new())
         }
+        "emerge" => {
+            // emerge --info output doesn't give per-package size cleanly;
+            // treat a non-empty output as confirmation the package is installed
+            if !output.trim().is_empty() {
+                return (String::new(), "installed".to_string());
+            }
+            (String::new(), String::new())
+        }
+        "brew" => {
+            // `brew info --installed <pkg>` outputs lines like:
+            //   <name>: stable <version> (bottled)
+            //   <path>: <n> files, <size>
+            for line in output.lines() {
+                if line.contains("files,") {
+                    if let Some(size_part) = line.split(',').nth(1) {
+                        return (String::new(), size_part.trim().to_string());
+                    }
+                }
+            }
+            // If brew info succeeded the package is installed; size just wasn't parseable
+            if !output.trim().is_empty() {
+                return (String::new(), "installed".to_string());
+            }
+            (String::new(), String::new())
+        }
         _ => (String::new(), String::new()),
     }
 }
@@ -364,6 +406,41 @@ fn parse_search_output(output: &str, pkg_manager: &str) -> (String, String) {
                 }
             }
             (String::new(), String::new())
+        }
+        "emerge" => {
+            // `emerge --search <pkg>` output; grab the first size-like line
+            for line in output.lines() {
+                if line.trim_start().starts_with("*") {
+                    // package found — size is not always shown, return a placeholder so
+                    // the caller knows the package exists
+                    return ("portage".to_string(), "available".to_string());
+                }
+            }
+            (String::new(), String::new())
+        }
+        "brew" => {
+            // `brew info <pkg>` first line: "<name>: stable <version> (bottled)"
+            // size line: "/<cellar-path>: <n> files, <size>"
+            let mut repo = String::new();
+            let mut size = String::new();
+            for line in output.lines() {
+                if line.contains("files,") {
+                    if let Some(s) = line.split(',').nth(1) {
+                        size = s.trim().to_string();
+                    }
+                }
+                if line.contains("homebrew") || line.contains("Homebrew") {
+                    repo = "homebrew".to_string();
+                }
+            }
+            // If we found size info, or at least the output was non-empty, the package exists
+            if size.is_empty() && !output.trim().is_empty() {
+                size = "available".to_string();
+            }
+            if repo.is_empty() && !output.trim().is_empty() {
+                repo = "homebrew".to_string();
+            }
+            (repo, size)
         }
         _ => (String::new(), String::new()),
     }
@@ -408,7 +485,9 @@ fn ask_update_confirmation() -> bool {
 
 /// Check if a command exists (silently)
 fn command_exists(program: &str) -> bool {
-    match Command::new("which")
+    // `which` works on Linux and macOS; on Windows use `where`
+    let checker = if cfg!(target_os = "windows") { "where" } else { "which" };
+    match Command::new(checker)
         .arg(program)
         .output() {
         Ok(output) => output.status.success(),
@@ -422,6 +501,8 @@ fn detect_system() -> System {
         System::Windows
     } else if cfg!(target_os = "linux") {
         System::Linux
+    } else if cfg!(target_os = "macos") {
+        System::MacOS
     } else {
         System::Unknown
     }
@@ -457,6 +538,16 @@ fn detect_linux_package_manager() -> Option<PackageManager> {
             list_args: &["list", "installed"],
             search_args: &["info"],
         },
+        // Portage: --usepkg --getbinpkg restricts to binary packages only (no source builds)
+        PackageManager {
+            program: "emerge",
+            install_args: &["--ask=n", "--usepkg", "--getbinpkg"],
+            remove_args: &["--ask=n", "--unmerge"],
+            update_args: &["--ask=n", "--usepkg", "--getbinpkg", "--update", "--deep", "--newuse", "@world"],
+            update_single_args: &["--ask=n", "--usepkg", "--getbinpkg", "--update"],
+            list_args: &["--list-sets"],
+            search_args: &["--search"],
+        },
     ];
 
     for manager in managers {
@@ -466,6 +557,23 @@ fn detect_linux_package_manager() -> Option<PackageManager> {
     }
 
     None
+}
+
+/// Detect available macOS package manager (Homebrew)
+fn detect_macos_package_manager() -> Option<PackageManager> {
+    if command_exists("brew") {
+        Some(PackageManager {
+            program: "brew",
+            install_args: &["install"],
+            remove_args: &["uninstall"],
+            update_args: &["upgrade"],
+            update_single_args: &["upgrade"],
+            list_args: &["list"],
+            search_args: &["info"],
+        })
+    } else {
+        None
+    }
 }
 
 fn parse_action(flag: &str) -> Option<Action> {
@@ -636,43 +744,206 @@ fn search_package_linux(package: &str, manager: &PackageManager) -> Option<Searc
 }
 
 fn extract_version_from_manager(package: &str, manager: &PackageManager) -> String {
-    let output = match Command::new(manager.program)
-        .args(&["-Si", package])
-        .output()
-    {
-        Ok(out) => out,
-        Err(_) => return String::new(),
-    };
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        if line.starts_with("Version") {
-            if let Some(version) = line.split(':').nth(1) {
-                return version.trim().to_string();
+    match manager.program {
+        "pacman" => {
+            let output = match Command::new(manager.program)
+                .args(&["-Si", package])
+                .output()
+            {
+                Ok(out) => out,
+                Err(_) => return String::new(),
+            };
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if line.starts_with("Version") {
+                    if let Some(version) = line.split(':').nth(1) {
+                        return version.trim().to_string();
+                    }
+                }
             }
+            String::new()
         }
+        "apt" => {
+            let output = match Command::new(manager.program)
+                .args(&["cache", "show", package])
+                .output()
+            {
+                Ok(out) => out,
+                Err(_) => return String::new(),
+            };
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if line.starts_with("Version:") {
+                    if let Some(v) = line.split(':').nth(1) {
+                        return v.trim().to_string();
+                    }
+                }
+            }
+            String::new()
+        }
+        "dnf" => {
+            let output = match Command::new(manager.program)
+                .args(&["info", package])
+                .output()
+            {
+                Ok(out) => out,
+                Err(_) => return String::new(),
+            };
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if line.starts_with("Version") {
+                    if let Some(v) = line.split(':').nth(1) {
+                        return v.trim().to_string();
+                    }
+                }
+            }
+            String::new()
+        }
+        "emerge" => {
+            // emerge --search outputs lines like "[ Searching ... ]" then
+            //   *  category/package
+            //        Latest version available: x.y.z
+            let output = match Command::new(manager.program)
+                .args(&["--search", package])
+                .output()
+            {
+                Ok(out) => out,
+                Err(_) => return String::new(),
+            };
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if line.contains("Latest version available") {
+                    if let Some(v) = line.split(':').nth(1) {
+                        return v.trim().to_string();
+                    }
+                }
+            }
+            String::new()
+        }
+        "brew" => {
+            // `brew info <pkg>` first content line: "<name>: stable <version> (bottled)"
+            let output = match Command::new(manager.program)
+                .args(&["info", package])
+                .output()
+            {
+                Ok(out) => out,
+                Err(_) => return String::new(),
+            };
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if line.contains("stable") {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    for (i, part) in parts.iter().enumerate() {
+                        if *part == "stable" {
+                            if let Some(v) = parts.get(i + 1) {
+                                return v.trim_end_matches(',').to_string();
+                            }
+                        }
+                    }
+                }
+            }
+            String::new()
+        }
+        _ => String::new(),
     }
-    String::new()
 }
 
 fn extract_description_from_manager(package: &str, manager: &PackageManager) -> String {
-    let output = match Command::new(manager.program)
-        .args(&["-Si", package])
-        .output()
-    {
-        Ok(out) => out,
-        Err(_) => return String::new(),
-    };
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        if line.starts_with("Description") {
-            if let Some(desc) = line.split(':').nth(1) {
-                return desc.trim().to_string();
+    match manager.program {
+        "pacman" => {
+            let output = match Command::new(manager.program)
+                .args(&["-Si", package])
+                .output()
+            {
+                Ok(out) => out,
+                Err(_) => return String::new(),
+            };
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if line.starts_with("Description") {
+                    if let Some(desc) = line.split(':').nth(1) {
+                        return desc.trim().to_string();
+                    }
+                }
             }
+            String::new()
         }
+        "apt" => {
+            let output = match Command::new(manager.program)
+                .args(&["cache", "show", package])
+                .output()
+            {
+                Ok(out) => out,
+                Err(_) => return String::new(),
+            };
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if line.starts_with("Description:") {
+                    if let Some(d) = line.splitn(2, ':').nth(1) {
+                        return d.trim().to_string();
+                    }
+                }
+            }
+            String::new()
+        }
+        "dnf" => {
+            let output = match Command::new(manager.program)
+                .args(&["info", package])
+                .output()
+            {
+                Ok(out) => out,
+                Err(_) => return String::new(),
+            };
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if line.starts_with("Summary") {
+                    if let Some(d) = line.split(':').nth(1) {
+                        return d.trim().to_string();
+                    }
+                }
+            }
+            String::new()
+        }
+        "emerge" => {
+            let output = match Command::new(manager.program)
+                .args(&["--search", package])
+                .output()
+            {
+                Ok(out) => out,
+                Err(_) => return String::new(),
+            };
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if line.trim_start().starts_with("Description") {
+                    if let Some(d) = line.split(':').nth(1) {
+                        return d.trim().to_string();
+                    }
+                }
+            }
+            String::new()
+        }
+        "brew" => {
+            // `brew info <pkg>` has a description line after the formula header
+            let output = match Command::new(manager.program)
+                .args(&["info", package])
+                .output()
+            {
+                Ok(out) => out,
+                Err(_) => return String::new(),
+            };
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let lines: Vec<&str> = stdout.lines().collect();
+            // Typically: line 0 = "name: stable version", line 1 = description
+            if lines.len() > 1 {
+                let desc = lines[1].trim();
+                if !desc.is_empty() && !desc.starts_with("==>") && !desc.starts_with('/') {
+                    return desc.to_string();
+                }
+            }
+            String::new()
+        }
+        _ => String::new(),
     }
-    String::new()
 }
 
 fn search_package_flatpak(package: &str) -> Option<SearchResult> {
@@ -742,7 +1013,12 @@ fn main() {
         println!("{}", "Modifiers:".bright_white().bold());
         println!("  {} Autoinstall (skip confirmation)", "a".bright_yellow());
         println!("  {} Quiet output (suppress package manager output)", "q".bright_yellow());
-        println!("  {} Use Flatpak", "f".bright_magenta());
+        println!("  {} Use Flatpak (Linux only)", "f".bright_magenta());
+        println!();
+        println!("{}", "Supported backends:".bright_white().bold());
+        println!("  Linux  : apt, pacman, dnf, emerge (binary/--usepkg only) + Flatpak");
+        println!("  macOS  : brew (Homebrew)");
+        println!("  Windows: winget");
         println!();
         println!("{}", "Examples:".bright_white().bold());
         println!("  hibrid {} vim", "-I".green());
@@ -800,6 +1076,17 @@ fn main() {
                         None => println!("{}", "No supported package manager found".red()),
                     }
                 }
+                System::MacOS => {
+                    match detect_macos_package_manager() {
+                        Some(manager) => {
+                            match search_package_linux(package, &manager) {
+                                Some(result) => println!("{}", format_search_box(package, &result).bright_cyan()),
+                                None => println!("{}", format!("{}: Package not found", package).red()),
+                            }
+                        }
+                        None => println!("{}", "No package manager found (is Homebrew installed?)".red()),
+                    }
+                }
                 System::Windows => {
                     println!("{}", "Search not yet supported for Windows".yellow());
                 }
@@ -826,6 +1113,20 @@ fn main() {
                         }, manager.program, true);
                     }
                     None => println!("{}", "No supported package manager found".red()),
+                }
+            }
+        } else if system == System::MacOS {
+            if let Action::ListFlatpak = action {
+                println!("{}", "Flatpak is not available on macOS".red());
+            } else {
+                match detect_macos_package_manager() {
+                    Some(manager) => {
+                        let (_, _) = run_command_with_output_detailed(manager.program, &{
+                            let mut v = manager.list_args.to_vec();
+                            v
+                        }, manager.program, true);
+                    }
+                    None => println!("{}", "No package manager found (is Homebrew installed?)".red()),
                 }
             }
         } else if system == System::Windows {
@@ -916,6 +1217,50 @@ fn main() {
             }
         } else if system == System::Windows {
             println!("{}", "Update not yet supported for Windows".yellow());
+        } else if system == System::MacOS {
+            let is_quiet = matches!(action, Action::UpdateQuiet | Action::UpdateAutoinstallQuiet | Action::UpdateFlatpakQuiet | Action::UpdateAutoinstallFlatpakQuiet);
+            let skip_confirm = is_autoinstall(action);
+
+            if matches!(action, Action::UpdateFlatpak | Action::UpdateFlatpakQuiet | Action::UpdateAutoinstallFlatpak | Action::UpdateAutoinstallFlatpakQuiet) {
+                println!("{}", "Flatpak is not available on macOS".red());
+            } else {
+                match detect_macos_package_manager() {
+                    Some(manager) => {
+                        // brew update refreshes formulae; brew upgrade upgrades packages
+                        // Run `brew update` first, then `brew upgrade`
+                        if packages.is_empty() {
+                            println!("{}", format_box_multiple("Update", vec![("All brew packages".to_string(), String::new(), String::new())]).bright_cyan());
+                            if !skip_confirm && !ask_update_confirmation() {
+                                println!("{}", "Update cancelled".yellow());
+                                return;
+                            }
+                            // sync formula list
+                            let _ = run_command_with_output_detailed(manager.program, &["update"], manager.program, !is_quiet);
+                            // upgrade all
+                            let (status, _) = run_command_with_output_detailed(manager.program, manager.update_args, manager.program, !is_quiet);
+                            print_result(action, status, "");
+                        } else {
+                            let packages_info: Vec<(String, String, String)> = packages.iter()
+                                .map(|p| (p.to_string(), "homebrew".to_string(), String::new()))
+                                .collect();
+                            println!("{}", format_box_multiple("Update", packages_info).bright_cyan());
+                            for package in &packages {
+                                if !skip_confirm && !ask_update_confirmation() {
+                                    println!("{}", "Update cancelled".yellow());
+                                    return;
+                                }
+                                let (status, _) = run_command_with_output_detailed(manager.program, &{
+                                    let mut base = manager.update_single_args.to_vec();
+                                    base.push(package);
+                                    base
+                                }, manager.program, !is_quiet);
+                                print_result(action, status, "");
+                            }
+                        }
+                    }
+                    None => println!("{}", "No package manager found (is Homebrew installed?)".red()),
+                }
+            }
         } else {
             println!("{}", "Unsupported system".red());
         }
@@ -1127,6 +1472,105 @@ fn main() {
         System::Unknown => {
             println!("{}", "Unsupported system".red());
             (false, String::new())
+        }
+
+        System::MacOS => {
+            match detect_macos_package_manager() {
+                Some(manager) => {
+                    let is_quiet = matches!(action, Action::InstallQuiet | Action::RemoveQuiet | Action::InstallAutoinstallQuiet | Action::RemoveAutoinstallQuiet);
+                    let skip_confirm = is_autoinstall(action);
+
+                    // Flatpak actions are not supported on macOS
+                    if matches!(action,
+                        Action::InstallFlatpak | Action::InstallFlatpakQuiet |
+                        Action::InstallAutoinstallFlatpak | Action::InstallAutoinstallFlatpakQuiet |
+                        Action::RemoveFlatpak | Action::RemoveFlatpakQuiet |
+                        Action::RemoveAutoinstallFlatpak | Action::RemoveAutoinstallFlatpakQuiet)
+                    {
+                        println!("{}", "Flatpak is not available on macOS".red());
+                        return (false, String::new());
+                    }
+
+                    match action {
+                        Action::Install | Action::InstallQuiet | Action::InstallAutoinstall | Action::InstallAutoinstallQuiet => {
+                            let mut all_valid = true;
+                            let mut packages_info = Vec::new();
+
+                            for package in &packages {
+                                let (repo, size) = manager.search_info(package);
+                                if size.is_empty() {
+                                    println!("{}", format!("{}: Package not found", package).red());
+                                    all_valid = false;
+                                    continue;
+                                }
+                                packages_info.push((package.to_string(), repo, size));
+                            }
+
+                            if !all_valid {
+                                return (false, String::new());
+                            }
+
+                            println!("{}", format_box_multiple("Install", packages_info).bright_cyan());
+
+                            if !skip_confirm && !ask_confirmation() {
+                                println!("{}", "Installation cancelled".yellow());
+                                return (false, String::new());
+                            }
+
+                            // brew does not need sudo
+                            for package in &packages {
+                                let (status, _) = run_command_with_output_detailed(manager.program, &{
+                                    let mut base = manager.install_args.to_vec();
+                                    base.push(package);
+                                    base
+                                }, manager.program, !is_quiet);
+                                print_result(action, status, "");
+                            }
+                        }
+                        Action::Remove | Action::RemoveQuiet | Action::RemoveAutoinstall | Action::RemoveAutoinstallQuiet => {
+                            let mut all_valid = true;
+                            let mut packages_info = Vec::new();
+
+                            for package in &packages {
+                                let (_, size) = get_installed_package_info(manager.program, package, manager.program);
+                                if size.is_empty() {
+                                    println!("{}", format!("{}: Package not installed or doesn't exist", package).red());
+                                    all_valid = false;
+                                    continue;
+                                }
+                                packages_info.push((package.to_string(), String::new(), size));
+                            }
+
+                            if !all_valid {
+                                return (false, String::new());
+                            }
+
+                            println!("{}", format_box_multiple("Remove", packages_info).bright_red());
+
+                            if !skip_confirm && !ask_removal_confirmation() {
+                                println!("{}", "Removal cancelled".yellow());
+                                return (false, String::new());
+                            }
+
+                            // brew does not need sudo
+                            for package in &packages {
+                                let (status, _) = run_command_with_output_detailed(manager.program, &{
+                                    let mut base = manager.remove_args.to_vec();
+                                    base.push(package);
+                                    base
+                                }, manager.program, !is_quiet);
+                                print_result(action, status, "");
+                            }
+                        }
+                        _ => {}
+                    }
+                    (true, String::new())
+                }
+                None => {
+                    println!("{}", "No package manager found (is Homebrew installed?)".red());
+                    (false, String::new())
+                }
+            }
         }
     };
 }
