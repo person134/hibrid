@@ -1360,6 +1360,102 @@ fn main() {
         return;
     }
 
+    // macOS install/remove handling (brew does not need sudo)
+    if system == System::MacOS {
+        if matches!(action,
+            Action::InstallFlatpak | Action::InstallFlatpakQuiet |
+            Action::InstallAutoinstallFlatpak | Action::InstallAutoinstallFlatpakQuiet |
+            Action::RemoveFlatpak | Action::RemoveFlatpakQuiet |
+            Action::RemoveAutoinstallFlatpak | Action::RemoveAutoinstallFlatpakQuiet)
+        {
+            println!("{}", "Flatpak is not available on macOS".red());
+            return;
+        }
+
+        match detect_macos_package_manager() {
+            Some(manager) => {
+                let is_quiet = matches!(action, Action::InstallQuiet | Action::RemoveQuiet | Action::InstallAutoinstallQuiet | Action::RemoveAutoinstallQuiet);
+                let skip_confirm = is_autoinstall(action);
+
+                match action {
+                    Action::Install | Action::InstallQuiet | Action::InstallAutoinstall | Action::InstallAutoinstallQuiet => {
+                        let mut all_valid = true;
+                        let mut packages_info = Vec::new();
+
+                        for package in &packages {
+                            let (repo, size) = manager.search_info(package);
+                            if size.is_empty() {
+                                println!("{}", format!("{}: Package not found", package).red());
+                                all_valid = false;
+                                continue;
+                            }
+                            packages_info.push((package.to_string(), repo, size));
+                        }
+
+                        if !all_valid {
+                            return;
+                        }
+
+                        println!("{}", format_box_multiple("Install", packages_info).bright_cyan());
+
+                        if !skip_confirm && !ask_confirmation() {
+                            println!("{}", "Installation cancelled".yellow());
+                            return;
+                        }
+
+                        for package in &packages {
+                            let (status, _) = run_command_with_output_detailed(manager.program, &{
+                                let mut base = manager.install_args.to_vec();
+                                base.push(package);
+                                base
+                            }, manager.program, !is_quiet);
+                            print_result(action, status, "");
+                        }
+                    }
+                    Action::Remove | Action::RemoveQuiet | Action::RemoveAutoinstall | Action::RemoveAutoinstallQuiet => {
+                        let mut all_valid = true;
+                        let mut packages_info = Vec::new();
+
+                        for package in &packages {
+                            let (_, size) = get_installed_package_info(manager.program, package, manager.program);
+                            if size.is_empty() {
+                                println!("{}", format!("{}: Package not installed or doesn't exist", package).red());
+                                all_valid = false;
+                                continue;
+                            }
+                            packages_info.push((package.to_string(), String::new(), size));
+                        }
+
+                        if !all_valid {
+                            return;
+                        }
+
+                        println!("{}", format_box_multiple("Remove", packages_info).bright_red());
+
+                        if !skip_confirm && !ask_removal_confirmation() {
+                            println!("{}", "Removal cancelled".yellow());
+                            return;
+                        }
+
+                        for package in &packages {
+                            let (status, _) = run_command_with_output_detailed(manager.program, &{
+                                let mut base = manager.remove_args.to_vec();
+                                base.push(package);
+                                base
+                            }, manager.program, !is_quiet);
+                            print_result(action, status, "");
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            None => {
+                println!("{}", "No package manager found (is Homebrew installed?)".red());
+            }
+        }
+        return;
+    }
+
     let (_success, _info) = match system {
         System::Windows => {
             let winget = PackageManager {
@@ -1469,108 +1565,9 @@ fn main() {
             }
         }
 
-        System::Unknown => {
+        System::MacOS | System::Unknown => {
             println!("{}", "Unsupported system".red());
             (false, String::new())
-        }
-
-        System::MacOS => {
-            match detect_macos_package_manager() {
-                Some(manager) => {
-                    let is_quiet = matches!(action, Action::InstallQuiet | Action::RemoveQuiet | Action::InstallAutoinstallQuiet | Action::RemoveAutoinstallQuiet);
-                    let skip_confirm = is_autoinstall(action);
-
-                    // Flatpak actions are not supported on macOS
-                    if matches!(action,
-                        Action::InstallFlatpak | Action::InstallFlatpakQuiet |
-                        Action::InstallAutoinstallFlatpak | Action::InstallAutoinstallFlatpakQuiet |
-                        Action::RemoveFlatpak | Action::RemoveFlatpakQuiet |
-                        Action::RemoveAutoinstallFlatpak | Action::RemoveAutoinstallFlatpakQuiet)
-                    {
-                        println!("{}", "Flatpak is not available on macOS".red());
-                        return (false, String::new());
-                    }
-
-                    match action {
-                        Action::Install | Action::InstallQuiet | Action::InstallAutoinstall | Action::InstallAutoinstallQuiet => {
-                            let mut all_valid = true;
-                            let mut packages_info = Vec::new();
-
-                            for package in &packages {
-                                let (repo, size) = manager.search_info(package);
-                                if size.is_empty() {
-                                    println!("{}", format!("{}: Package not found", package).red());
-                                    all_valid = false;
-                                    continue;
-                                }
-                                packages_info.push((package.to_string(), repo, size));
-                            }
-
-                            if !all_valid {
-                                return (false, String::new());
-                            }
-
-                            println!("{}", format_box_multiple("Install", packages_info).bright_cyan());
-
-                            if !skip_confirm && !ask_confirmation() {
-                                println!("{}", "Installation cancelled".yellow());
-                                return (false, String::new());
-                            }
-
-                            // brew does not need sudo
-                            for package in &packages {
-                                let (status, _) = run_command_with_output_detailed(manager.program, &{
-                                    let mut base = manager.install_args.to_vec();
-                                    base.push(package);
-                                    base
-                                }, manager.program, !is_quiet);
-                                print_result(action, status, "");
-                            }
-                        }
-                        Action::Remove | Action::RemoveQuiet | Action::RemoveAutoinstall | Action::RemoveAutoinstallQuiet => {
-                            let mut all_valid = true;
-                            let mut packages_info = Vec::new();
-
-                            for package in &packages {
-                                let (_, size) = get_installed_package_info(manager.program, package, manager.program);
-                                if size.is_empty() {
-                                    println!("{}", format!("{}: Package not installed or doesn't exist", package).red());
-                                    all_valid = false;
-                                    continue;
-                                }
-                                packages_info.push((package.to_string(), String::new(), size));
-                            }
-
-                            if !all_valid {
-                                return (false, String::new());
-                            }
-
-                            println!("{}", format_box_multiple("Remove", packages_info).bright_red());
-
-                            if !skip_confirm && !ask_removal_confirmation() {
-                                println!("{}", "Removal cancelled".yellow());
-                                return (false, String::new());
-                            }
-
-                            // brew does not need sudo
-                            for package in &packages {
-                                let (status, _) = run_command_with_output_detailed(manager.program, &{
-                                    let mut base = manager.remove_args.to_vec();
-                                    base.push(package);
-                                    base
-                                }, manager.program, !is_quiet);
-                                print_result(action, status, "");
-                            }
-                        }
-                        _ => {}
-                    }
-                    (true, String::new())
-                }
-                None => {
-                    println!("{}", "No package manager found (is Homebrew installed?)".red());
-                    (false, String::new())
-                }
-            }
         }
     };
 }
