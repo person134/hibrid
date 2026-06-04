@@ -3,6 +3,9 @@ use std::process::{Command, Stdio};
 use std::process::exit;
 use std::io::{self, Write};
 use colored::*;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::thread;
+use std::time::Duration;
 
 /// Supported operating systems
 #[derive(Debug, PartialEq)]
@@ -80,6 +83,21 @@ fn run_command_with_output(program: &str, args: &[&str], pkg_manager: &str) -> (
     run_command_with_output_detailed(program, args, pkg_manager, false)
 }
 
+/// Shows an animated spinner in quiet mode
+fn show_spinner(running: Arc<AtomicBool>) {
+    let spinner_chars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    let mut index = 0;
+    
+    while running.load(Ordering::Relaxed) {
+        print!("\r{} Processing...", spinner_chars[index]);
+        io::stdout().flush().unwrap();
+        index = (index + 1) % spinner_chars.len();
+        thread::sleep(Duration::from_millis(80));
+    }
+    print!("\r");
+    io::stdout().flush().unwrap();
+}
+
 /// Runs a system command with optional detailed output
 fn run_command_with_output_detailed(program: &str, args: &[&str], pkg_manager: &str, detailed: bool) -> (bool, String) {
     if detailed {
@@ -101,8 +119,15 @@ fn run_command_with_output_detailed(program: &str, args: &[&str], pkg_manager: &
             }
         }
     } else {
-        // For normal mode, capture output
-        if program == "sudo" {
+        // For normal mode (quiet), show spinner and capture output
+        let running = Arc::new(AtomicBool::new(true));
+        let running_clone = Arc::clone(&running);
+        
+        let spinner_thread = thread::spawn(move || {
+            show_spinner(running_clone);
+        });
+        
+        let result = if program == "sudo" {
             // For sudo, inherit stdin for interaction, capture output for extraction
             match Command::new(program)
                 .args(args)
@@ -131,7 +156,12 @@ fn run_command_with_output_detailed(program: &str, args: &[&str], pkg_manager: &
                 }
                 Err(_) => (false, String::new()),
             }
-        }
+        };
+        
+        running.store(false, Ordering::Relaxed);
+        let _ = spinner_thread.join();
+        
+        result
     }
 }
 
