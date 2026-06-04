@@ -10,14 +10,15 @@ A minimal cross-platform package manager wrapper for Windows and Linux. Hibrid p
 
 **Supported backends:**
 - **Windows:** winget
-- **Linux:** apt, pacman, dnf
+- **MacOS:** brew
+- **Linux:** apt, pacman, dnf, portage
 - **Linux (optional):** flatpak
 
 ---
 
 ## Features
 
-- Cross-platform (Windows & Linux)
+- Cross-platform (Windows, Linux & MacOS)
 - Automatic Linux package manager detection
 - Optional Flatpak support
 - Lightweight and fast
@@ -29,8 +30,9 @@ A minimal cross-platform package manager wrapper for Windows and Linux. Hibrid p
 ## Requirements
 
 - **Rust 1.56+** ([Install Rust](https://rustup.rs/))
-- For Linux: One of apt, pacman, or dnf must be installed
+- For Linux: One of apt, pacman, dnf, or portage must be installed
 - For Windows: winget must be available
+- For MacOS: Homebrew must be installed
 
 ---
 
@@ -53,14 +55,14 @@ The binary will be at `target/release/hibrid` (or `hibrid.exe` on Windows).
 ## Usage
 
 ```bash
-hibrid [-I|-R|-V][a][q][f] package
+hibrid [-I|-R|-U|-L][a][q][f] package
 ```
 
 **Main commands:**
 - `-I` Install a package
 - `-R` Remove a package
-- `-V` Show version
-- `-S` Search a package and list information
+- `-U` Update system or update single package
+- `-L` List installed packages
 
 **Modifiers:**
 - `a` Autoinstall (skip confirmation prompt)
@@ -74,8 +76,8 @@ hibrid -Ia firefox
 hibrid -R vim
 hibrid -If spotify
 hibrid -Iq vlc
-hibrid -V
-hibrid -S mpv
+hibrid -U
+hibrid -U mpv
 ```
 
 ---
