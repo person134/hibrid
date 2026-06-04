@@ -38,14 +38,26 @@ A minimal cross-platform package manager wrapper for Windows and Linux. Hibrid p
 
 ## Installation
 
-Hibrid is intentionally lightweight with no installer. Building takes seconds and requires only Rust.
+Hibrid is very lightweight and can be installed with a simple .sh or .bat file. Building takes seconds and requires only Rust.
 
-### Build from source
+### Build from source and install
 
 ```bash
 git clone https://github.com/person134/hibrid.git
 cd hibrid
 cargo build --release
+cd install-uninstall
+```
+### Linux and MacOS
+
+```bash
+chmod +x linux_macos-install.sh
+./linux_macos-install.sh
+```
+### Windows
+
+```bash
+windows-install.bat
 ```
 
 The binary will be at `target/release/hibrid` (or `hibrid.exe` on Windows).
