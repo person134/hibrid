@@ -128,12 +128,36 @@ fn ensure_aur_helper() -> Option<PackageManager> {
     if !input.trim().is_empty() && !input.trim().eq_ignore_ascii_case("y") && !input.trim().eq_ignore_ascii_case("yes") {
         return None;
     }
-    let args = ["pacman", "-S", "--noconfirm", "yay"];
-    let (status, _) = run_command_with_output_detailed("sudo", &args, "pacman", true);
-    if !status {
-        println!("{}", "Failed to install yay".red());
+
+    println!("{}", "Installing build dependencies (git, base-devel)...".yellow());
+    let deps = ["pacman", "-S", "--noconfirm", "--needed", "base-devel", "git"];
+    let (ok, _) = run_command_with_output_detailed("sudo", &deps, "pacman", true);
+    if !ok {
+        println!("{}", "Failed to install build dependencies".red());
         return None;
     }
+
+    let tmpdir = "/tmp/yay-build";
+    let _ = std::fs::remove_dir_all(tmpdir);
+
+    println!("{}", "Cloning yay from AUR...".yellow());
+    let (ok, _) = run_command_with_output_detailed("git", &["clone", "https://aur.archlinux.org/yay.git", tmpdir], "git", true);
+    if !ok {
+        println!("{}", "Failed to clone yay".red());
+        return None;
+    }
+
+    println!("{}", "Building and installing yay...".yellow());
+    let status = std::process::Command::new("makepkg")
+        .args(&["-si", "--noconfirm"])
+        .current_dir(tmpdir)
+        .status();
+    if !status.is_ok() || !status.unwrap().success() {
+        println!("{}", "Failed to build yay".red());
+        return None;
+    }
+
+    let _ = std::fs::remove_dir_all(tmpdir);
     detect_aur_helper()
 }
 
@@ -468,12 +492,24 @@ fn handle_install(system: System, flags: Flags, packages: &[&str]) {
             let mut effective = manager;
             if effective.program == "pacman" {
                 let mut needs_aur = false;
+                let mut bogus = false;
                 for package in packages {
-                    if search_info(&effective, package).1.is_empty() {
-                        needs_aur = true;
-                        break;
+                    let (repo, _) = search_info(&effective, package);
+                    if repo.is_empty() {
+                        if let Some(aur) = detect_aur_helper() {
+                            let (a_repo, _) = search_info(&aur, package);
+                            if a_repo.is_empty() {
+                                println!("{}", format!("{}: Package not found in any repository", package).red());
+                                bogus = true;
+                            } else {
+                                needs_aur = true;
+                            }
+                        } else {
+                            needs_aur = true;
+                        }
                     }
                 }
+                if bogus { return; }
                 if needs_aur {
                     match ensure_aur_helper() {
                         Some(aur) => effective = aur,
@@ -659,12 +695,22 @@ fn handle_remove(system: System, flags: Flags, packages: &[&str]) {
             let mut effective = manager;
             if effective.program == "pacman" {
                 let mut needs_aur = false;
+                let mut bogus = false;
                 for package in packages {
                     if get_installed_package_info(&effective, package).1.is_empty() {
-                        needs_aur = true;
-                        break;
+                        if let Some(aur) = detect_aur_helper() {
+                            if get_installed_package_info(&aur, package).1.is_empty() {
+                                println!("{}", format!("{}: Package not installed or doesn't exist", package).red());
+                                bogus = true;
+                            } else {
+                                needs_aur = true;
+                            }
+                        } else {
+                            needs_aur = true;
+                        }
                     }
                 }
+                if bogus { return; }
                 if needs_aur {
                     match ensure_aur_helper() {
                         Some(aur) => effective = aur,
