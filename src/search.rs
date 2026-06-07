@@ -75,6 +75,9 @@ fn parse_search_output(output: &str, pkg_manager: &str) -> (String, String) {
 fn get_package_info(program: &str, args: &[&str], pkg_manager: &str) -> (String, String) {
     match Command::new(program).args(args).env("LC_ALL", "C.UTF-8").output() {
         Ok(output) => {
+            if !output.status.success() {
+                return (String::new(), String::new());
+            }
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             parse_search_output(&stdout, pkg_manager)
         }
