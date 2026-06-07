@@ -184,12 +184,12 @@ fn handle_search(system: System, flags: Flags, packages: &[&str]) {
     match system {
         System::Linux => match detect_linux_package_manager() {
             Some(manager) => match search_package_linux(package, &manager) {
-                Some(result) => println!("{}", format_search_box(package, &result).bright_cyan()),
+                Some(result) => println!("{}", format_search_box(package, &result).bright_blue()),
                 None => {
                     if manager.program == "pacman" {
                         if let Some(aur) = detect_aur_helper() {
                             if let Some(result) = search_package_linux(package, &aur) {
-                                println!("{}", format_search_box(package, &result).bright_magenta());
+                                println!("{}", format_search_box(package, &result).truecolor(255, 165, 0));
                                 return;
                             }
                         }
@@ -201,7 +201,7 @@ fn handle_search(system: System, flags: Flags, packages: &[&str]) {
         },
         System::MacOS => match detect_macos_package_manager() {
             Some(manager) => match search_package_linux(package, &manager) {
-                Some(result) => println!("{}", format_search_box(package, &result).bright_cyan()),
+                Some(result) => println!("{}", format_search_box(package, &result).bright_blue()),
                 None => println!("{}", format!("{}: Package not found", package).red()),
             },
             None => println!("{}", "No package manager found (is Homebrew installed?)".red()),
@@ -300,7 +300,7 @@ fn handle_update(system: System, flags: Flags, packages: &[&str]) {
                 if packages.is_empty() {
                     println!("{}", format_box_multiple("Update", vec![
                         ("All packages".to_string(), String::new(), String::new())
-                    ]).bright_cyan());
+                    ]).bright_blue());
                     if !skip_confirm && !ask_update_confirmation() {
                         println!("{}", "Update cancelled".yellow());
                         return;
@@ -330,7 +330,7 @@ fn handle_update(system: System, flags: Flags, packages: &[&str]) {
                     let packages_info: Vec<(String, String, String)> = packages.iter()
                         .map(|p| (p.to_string(), String::new(), String::new()))
                         .collect();
-                    println!("{}", format_box_multiple("Update", packages_info).bright_cyan());
+                    println!("{}", format_box_multiple("Update", packages_info).bright_blue());
 
                     if !skip_confirm && !ask_update_confirmation() {
                         println!("{}", "Update cancelled".yellow());
@@ -364,7 +364,7 @@ fn handle_update(system: System, flags: Flags, packages: &[&str]) {
                 if packages.is_empty() {
                     println!("{}", format_box_multiple("Update", vec![
                         ("All brew packages".to_string(), String::new(), String::new())
-                    ]).bright_cyan());
+                    ]).bright_blue());
                     if !skip_confirm && !ask_update_confirmation() {
                         println!("{}", "Update cancelled".yellow());
                         return;
@@ -391,7 +391,7 @@ fn handle_update(system: System, flags: Flags, packages: &[&str]) {
                     let packages_info: Vec<(String, String, String)> = packages.iter()
                         .map(|p| (p.to_string(), "homebrew".to_string(), String::new()))
                         .collect();
-                    println!("{}", format_box_multiple("Update", packages_info).bright_cyan());
+                    println!("{}", format_box_multiple("Update", packages_info).bright_blue());
 
                     if !skip_confirm && !ask_update_confirmation() {
                         println!("{}", "Update cancelled".yellow());
@@ -524,7 +524,12 @@ fn handle_install(system: System, flags: Flags, packages: &[&str]) {
                 packages_info.push((package.to_string(), if repo.is_empty() { "AUR".to_string() } else { repo }, size));
             }
 
-            println!("{}", format_box_multiple("Install", packages_info).bright_cyan());
+            let box_str = format_box_multiple("Install", packages_info);
+            if effective.program == "yay" || effective.program == "paru" {
+                println!("{}", box_str.truecolor(255, 165, 0));
+            } else {
+                println!("{}", box_str.bright_blue());
+            }
 
             if !skip_confirm && !ask_confirmation() {
                 println!("{}", "Installation cancelled".yellow());
@@ -562,7 +567,7 @@ fn handle_install(system: System, flags: Flags, packages: &[&str]) {
                     packages_info.push((package.to_string(), repo, size));
                 }
 
-                println!("{}", format_box_multiple("Install", packages_info).bright_cyan());
+                println!("{}", format_box_multiple("Install", packages_info).bright_blue());
 
                 if !skip_confirm && !ask_confirmation() {
                     println!("{}", "Installation cancelled".yellow());
