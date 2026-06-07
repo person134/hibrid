@@ -25,13 +25,21 @@ fn parse_search_output(output: &str, pkg_manager: &str) -> (String, String) {
             (repo, size)
         }
         "apt" => {
+            let mut found = false;
+            let mut size = String::new();
             for line in output.lines() {
-                if line.starts_with("Size:") {
-                    let size = line.split(':').nth(1).unwrap_or("").trim().to_string();
-                    return (String::new(), size);
+                if line.starts_with("Package:") {
+                    found = true;
+                }
+                if line.starts_with("Size:") || line.starts_with("Installed-Size:") {
+                    size = line.split(':').nth(1).unwrap_or("").trim().to_string();
                 }
             }
-            (String::new(), String::new())
+            if found {
+                ("apt".to_string(), size)
+            } else {
+                (String::new(), String::new())
+            }
         }
         "dnf" => {
             for line in output.lines() {
@@ -65,7 +73,7 @@ fn parse_search_output(output: &str, pkg_manager: &str) -> (String, String) {
 }
 
 fn get_package_info(program: &str, args: &[&str], pkg_manager: &str) -> (String, String) {
-    match Command::new(program).args(args).output() {
+    match Command::new(program).args(args).env("LC_ALL", "C.UTF-8").output() {
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             parse_search_output(&stdout, pkg_manager)
@@ -256,6 +264,7 @@ fn extract_version_from_manager(package: &str, manager: &PackageManager) -> Stri
         "apt" => {
             let output = match Command::new(manager.program)
                 .args(&["show", package])
+                .env("LC_ALL", "C.UTF-8")
                 .output()
             {
                 Ok(out) => out,
@@ -354,6 +363,7 @@ fn extract_description_from_manager(package: &str, manager: &PackageManager) -> 
         "apt" => {
             let output = match Command::new(manager.program)
                 .args(&["show", package])
+                .env("LC_ALL", "C.UTF-8")
                 .output()
             {
                 Ok(out) => out,

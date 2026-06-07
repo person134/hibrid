@@ -521,7 +521,7 @@ fn handle_install(system: System, flags: Flags, packages: &[&str]) {
             let mut packages_info = Vec::new();
             for package in packages {
                 let (repo, size) = search_info(&effective, package);
-                packages_info.push((package.to_string(), if repo.is_empty() { "AUR".to_string() } else { repo }, size));
+                packages_info.push((package.to_string(), repo, size));
             }
 
             let box_str = format_box_multiple("Install", packages_info);
