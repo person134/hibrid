@@ -68,8 +68,38 @@ pub fn parse_arguments<'a>(args: &[&'a str]) -> Option<(Action, Flags, Vec<&'a s
     }
     let first = args[0];
     if first.starts_with('-') {
-        let (action, flags) = parse_action(first)?;
-        let packages = args[1..].to_vec();
+        let (action, mut flags) = parse_action(first)?;
+        let mut packages = Vec::new();
+        for arg in &args[1..] {
+            if *arg == "--" {
+                continue;
+            }
+            if let Some(rest) = arg.strip_prefix("--") {
+                match rest {
+                    "yes" => flags.autoinstall = true,
+                    "quiet" => flags.quiet = true,
+                    "flatpak" => flags.flatpak = true,
+                    "dry-run" => flags.dry_run = true,
+                    _ => packages.push(*arg),
+                }
+            } else if arg.starts_with('-') && arg.len() > 1 {
+                let mut valid = true;
+                for c in arg[1..].chars() {
+                    match c {
+                        'y' => flags.autoinstall = true,
+                        'q' => flags.quiet = true,
+                        'f' => flags.flatpak = true,
+                        'd' => flags.dry_run = true,
+                        _ => { valid = false; break; }
+                    }
+                }
+                if !valid {
+                    packages.push(*arg);
+                }
+            } else {
+                packages.push(*arg);
+            }
+        }
         Some((action, flags, packages))
     } else {
         parse_word_action(args)

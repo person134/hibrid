@@ -84,11 +84,12 @@ Two styles are supported:
 | `-V`, `--version` | Show version |
 | `-h`, `--help` | Show help message |
 
-Modifiers can be passed as separate flags (`-y -d`) or combined (`-yd`). With the short-flag style, modifiers are appended with no space:
+Modifiers can be passed as separate flags (`-y -d`) or combined (`-yd`). With the short-flag style, modifiers can be appended to the flag or passed as separate arguments after it:
 
 ```
-hibrid -Iaqf  →  Install + autoinstall + quiet + flatpak
-hibrid -Id    →  Install + dry run
+hibrid -Iaqf vim    →  Install + autoinstall + quiet + flatpak
+hibrid -Id vim      →  Install + dry run
+hibrid -I vim -d    →  Install + dry run (modifier after package)
 ```
 
 ### Examples

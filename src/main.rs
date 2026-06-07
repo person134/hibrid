@@ -55,9 +55,11 @@ fn print_help() {
     println!("{}", "║              Hibrid Package Manager Wrapper               ║".bright_cyan());
     println!("{}", "╚════════════════════════════════════════════════════════════╝".bright_cyan());
     println!();
-    println!("{}", "Usage: hibrid <command> [packages...] [modifiers]".bright_white().bold());
-    println!("       hibrid -h | --help");
-    println!("       hibrid -V | --version");
+    println!("{}", "Usage:".bright_white().bold());
+    println!("  hibrid <command> [modifiers] [packages...]");
+    println!("  hibrid -<FLAG><modifiers> [packages...] [modifiers]");
+    println!("  hibrid -h | --help");
+    println!("  hibrid -V | --version");
     println!();
     println!("{}", "Commands:".bright_white().bold());
     println!("  {} (or {}) Install package(s)", "install".green().bold(), "-I".green().bold());
