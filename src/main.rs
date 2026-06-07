@@ -77,7 +77,7 @@ fn print_help() {
     println!("  -h, --help     Show this help message");
     println!();
     println!("{}", "Supported backends:".bright_white().bold());
-    println!("  Linux  : apt, pacman, dnf, emerge + Flatpak");
+    println!("  Linux  : apt, pacman, dnf, emerge, yay, paru + Flatpak");
     println!("  macOS  : Homebrew");
     println!("  Windows: winget");
     println!();

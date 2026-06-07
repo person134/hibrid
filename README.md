@@ -27,7 +27,7 @@ hibrid update             # update everything
 |----|----------|
 | Windows | winget |
 | macOS | Homebrew |
-| Linux | apt, pacman, dnf, portage + Flatpak |
+| Linux | apt, pacman, dnf, portage, yay, paru + Flatpak |
 
 ## Quick start
 
