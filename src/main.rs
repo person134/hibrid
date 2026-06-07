@@ -490,12 +490,12 @@ fn handle_install(system: System, flags: Flags, packages: &[&str]) {
             };
 
             let mut effective = manager;
-            if effective.program == "pacman" {
-                let mut needs_aur = false;
-                let mut bogus = false;
-                for package in packages {
-                    let (repo, _) = search_info(&effective, package);
-                    if repo.is_empty() {
+            let mut needs_aur = false;
+            let mut bogus = false;
+            for package in packages {
+                let (repo, _) = search_info(&effective, package);
+                if repo.is_empty() {
+                    if effective.program == "pacman" {
                         if let Some(aur) = detect_aur_helper() {
                             let (a_repo, _) = search_info(&aur, package);
                             if a_repo.is_empty() {
@@ -507,14 +507,17 @@ fn handle_install(system: System, flags: Flags, packages: &[&str]) {
                         } else {
                             needs_aur = true;
                         }
+                    } else {
+                        println!("{}", format!("{}: Package not found", package).red());
+                        bogus = true;
                     }
                 }
-                if bogus { return; }
-                if needs_aur {
-                    match ensure_aur_helper() {
-                        Some(aur) => effective = aur,
-                        None => return,
-                    }
+            }
+            if bogus { return; }
+            if needs_aur {
+                match ensure_aur_helper() {
+                    Some(aur) => effective = aur,
+                    None => return,
                 }
             }
 
@@ -698,11 +701,12 @@ fn handle_remove(system: System, flags: Flags, packages: &[&str]) {
             };
 
             let mut effective = manager;
-            if effective.program == "pacman" {
-                let mut needs_aur = false;
-                let mut bogus = false;
-                for package in packages {
-                    if get_installed_package_info(&effective, package).1.is_empty() {
+            let mut needs_aur = false;
+            let mut bogus = false;
+            for package in packages {
+                let (_, size) = get_installed_package_info(&effective, package);
+                if size.is_empty() {
+                    if effective.program == "pacman" {
                         if let Some(aur) = detect_aur_helper() {
                             if get_installed_package_info(&aur, package).1.is_empty() {
                                 println!("{}", format!("{}: Package not installed or doesn't exist", package).red());
@@ -713,14 +717,17 @@ fn handle_remove(system: System, flags: Flags, packages: &[&str]) {
                         } else {
                             needs_aur = true;
                         }
+                    } else {
+                        println!("{}", format!("{}: Package not installed or doesn't exist", package).red());
+                        bogus = true;
                     }
                 }
-                if bogus { return; }
-                if needs_aur {
-                    match ensure_aur_helper() {
-                        Some(aur) => effective = aur,
-                        None => return,
-                    }
+            }
+            if bogus { return; }
+            if needs_aur {
+                match ensure_aur_helper() {
+                    Some(aur) => effective = aur,
+                    None => return,
                 }
             }
 
