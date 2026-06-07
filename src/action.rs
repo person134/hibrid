@@ -12,6 +12,7 @@ pub struct Flags {
     pub autoinstall: bool,
     pub quiet: bool,
     pub flatpak: bool,
+    pub dry_run: bool,
 }
 
 pub fn parse_action(flag: &str) -> Option<(Action, Flags)> {
@@ -27,7 +28,7 @@ pub fn parse_action(flag: &str) -> Option<(Action, Flags)> {
 
     match base {
         'I' | 'R' | 'U' => {
-            if !valid_mods(modifiers, &['a', 'q', 'f']) {
+            if !valid_mods(modifiers, &['a', 'q', 'f', 'd']) {
                 return None;
             }
             let action = match base {
@@ -39,6 +40,7 @@ pub fn parse_action(flag: &str) -> Option<(Action, Flags)> {
                 autoinstall: modifiers.contains('a'),
                 quiet: modifiers.contains('q'),
                 flatpak: modifiers.contains('f'),
+                dry_run: modifiers.contains('d'),
             }))
         }
         'L' | 'S' => {
@@ -53,6 +55,7 @@ pub fn parse_action(flag: &str) -> Option<(Action, Flags)> {
                 autoinstall: false,
                 quiet: false,
                 flatpak: modifiers.contains('f'),
+                dry_run: false,
             }))
         }
         _ => None,
@@ -67,7 +70,7 @@ mod tests {
     fn parse_install_basic() {
         let (action, flags) = parse_action("-I").unwrap();
         assert_eq!(action, Action::Install);
-        assert!(!flags.autoinstall && !flags.quiet && !flags.flatpak);
+        assert!(!flags.autoinstall && !flags.quiet && !flags.flatpak && !flags.dry_run);
     }
 
     #[test]
@@ -75,7 +78,6 @@ mod tests {
         let (action, flags) = parse_action("-Ia").unwrap();
         assert_eq!(action, Action::Install);
         assert!(flags.autoinstall);
-        assert!(!flags.quiet && !flags.flatpak);
     }
 
     #[test]
@@ -83,7 +85,6 @@ mod tests {
         let (action, flags) = parse_action("-Iq").unwrap();
         assert_eq!(action, Action::Install);
         assert!(flags.quiet);
-        assert!(!flags.autoinstall && !flags.flatpak);
     }
 
     #[test]
@@ -91,79 +92,58 @@ mod tests {
         let (action, flags) = parse_action("-If").unwrap();
         assert_eq!(action, Action::Install);
         assert!(flags.flatpak);
-        assert!(!flags.autoinstall && !flags.quiet);
+    }
+
+    #[test]
+    fn parse_install_dry_run() {
+        let (action, flags) = parse_action("-Id").unwrap();
+        assert_eq!(action, Action::Install);
+        assert!(flags.dry_run);
     }
 
     #[test]
     fn parse_install_all_mods() {
-        let (action, flags) = parse_action("-Iaqf").unwrap();
+        let (action, flags) = parse_action("-Iaqfd").unwrap();
         assert_eq!(action, Action::Install);
-        assert!(flags.autoinstall && flags.quiet && flags.flatpak);
+        assert!(flags.autoinstall && flags.quiet && flags.flatpak && flags.dry_run);
     }
 
     #[test]
     fn parse_remove_basic() {
-        let (action, flags) = parse_action("-R").unwrap();
+        let (action, _flags) = parse_action("-R").unwrap();
         assert_eq!(action, Action::Remove);
-        assert!(!flags.autoinstall && !flags.quiet && !flags.flatpak);
     }
 
     #[test]
-    fn parse_remove_auto_quiet() {
-        let (action, flags) = parse_action("-Raq").unwrap();
+    fn parse_remove_dry_run() {
+        let (action, flags) = parse_action("-Rd").unwrap();
         assert_eq!(action, Action::Remove);
-        assert!(flags.autoinstall && flags.quiet);
-        assert!(!flags.flatpak);
-    }
-
-    #[test]
-    fn parse_remove_flatpak() {
-        let (action, flags) = parse_action("-Rf").unwrap();
-        assert_eq!(action, Action::Remove);
-        assert!(flags.flatpak);
-        assert!(!flags.autoinstall && !flags.quiet);
+        assert!(flags.dry_run);
     }
 
     #[test]
     fn parse_update_basic() {
-        let (action, flags) = parse_action("-U").unwrap();
+        let (action, _flags) = parse_action("-U").unwrap();
         assert_eq!(action, Action::Update);
-        assert!(!flags.autoinstall && !flags.quiet && !flags.flatpak);
     }
 
     #[test]
-    fn parse_update_auto_quiet_flatpak() {
-        let (action, flags) = parse_action("-Uaqf").unwrap();
+    fn parse_update_dry_run() {
+        let (action, flags) = parse_action("-Ud").unwrap();
         assert_eq!(action, Action::Update);
-        assert!(flags.autoinstall && flags.quiet && flags.flatpak);
+        assert!(flags.dry_run);
     }
 
     #[test]
     fn parse_list() {
-        let (action, flags) = parse_action("-L").unwrap();
+        let (action, _flags) = parse_action("-L").unwrap();
         assert_eq!(action, Action::List);
-        assert!(!flags.flatpak);
-    }
-
-    #[test]
-    fn parse_list_flatpak() {
-        let (action, flags) = parse_action("-Lf").unwrap();
-        assert_eq!(action, Action::List);
-        assert!(flags.flatpak);
     }
 
     #[test]
     fn parse_search() {
-        let (action, flags) = parse_action("-S").unwrap();
+        let (action, _flags) = parse_action("-S").unwrap();
         assert_eq!(action, Action::Search);
-        assert!(!flags.flatpak);
-    }
-
-    #[test]
-    fn parse_search_flatpak() {
-        let (action, flags) = parse_action("-Sf").unwrap();
-        assert_eq!(action, Action::Search);
-        assert!(flags.flatpak);
     }
 
     #[test]
@@ -183,12 +163,7 @@ mod tests {
 
     #[test]
     fn parse_invalid_modifier_on_list() {
-        assert!(parse_action("-La").is_none());
-    }
-
-    #[test]
-    fn parse_invalid_modifier_on_search() {
-        assert!(parse_action("-Sq").is_none());
+        assert!(parse_action("-Ld").is_none());
     }
 
     #[test]

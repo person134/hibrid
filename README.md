@@ -61,6 +61,7 @@ hibrid <flags> [package]
 | `-U`  | Update all packages or a specific one |
 | `-L`  | List installed packages |
 | `-S`  | Search for a package |
+| `-V`  | Show version |
 
 ### Modifiers
 
@@ -69,11 +70,13 @@ hibrid <flags> [package]
 | `a` | Skip confirmation prompt |
 | `q` | Quiet mode (show spinner instead of full output) |
 | `f` | Use Flatpak backend (Linux only) |
+| `d` | Dry run (preview changes without making them) |
 
 Modifiers go right after the command flag with no space:
 
 ```
 -Iaqf  →  Install + autoinstall + quiet + flatpak
+-Id    →  Install + dry run
 ```
 
 ### Examples
@@ -88,6 +91,8 @@ hibrid -U               # Update all system packages
 hibrid -U mpv           # Update mpv only
 hibrid -L               # List installed packages
 hibrid -S git           # Search for git
+hibrid -Id vim          # Preview installing vim (dry run)
+hibrid -V               # Show version
 ```
 
 ## Development

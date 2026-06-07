@@ -17,6 +17,8 @@ pub struct PackageManager {
     pub update_single_args: &'static [&'static str],
     pub list_args: &'static [&'static str],
     pub search_args: &'static [&'static str],
+    pub dry_run_args: &'static [&'static str],
+    pub update_cache_args: &'static [&'static str],
 }
 
 pub fn detect_system() -> System {
@@ -51,6 +53,8 @@ pub fn detect_linux_package_manager() -> Option<PackageManager> {
             update_single_args: &["install", "--only-upgrade", "-y"],
             list_args: &["list", "--installed"],
             search_args: &["show"],
+            dry_run_args: &["--dry-run"],
+            update_cache_args: &["update"],
         },
         PackageManager {
             program: "pacman",
@@ -60,6 +64,8 @@ pub fn detect_linux_package_manager() -> Option<PackageManager> {
             update_single_args: &["-S", "--noconfirm"],
             list_args: &["-Q"],
             search_args: &["-Si"],
+            dry_run_args: &["--print"],
+            update_cache_args: &[],
         },
         PackageManager {
             program: "dnf",
@@ -69,6 +75,8 @@ pub fn detect_linux_package_manager() -> Option<PackageManager> {
             update_single_args: &["upgrade", "-y"],
             list_args: &["list", "installed"],
             search_args: &["info"],
+            dry_run_args: &["--dry-run"],
+            update_cache_args: &[],
         },
         PackageManager {
             program: "emerge",
@@ -78,6 +86,8 @@ pub fn detect_linux_package_manager() -> Option<PackageManager> {
             update_single_args: &["--ask=n", "--usepkg", "--getbinpkg", "--update"],
             list_args: &["--list-sets"],
             search_args: &["--search"],
+            dry_run_args: &["--pretend"],
+            update_cache_args: &[],
         },
     ];
 
@@ -100,6 +110,8 @@ pub fn detect_macos_package_manager() -> Option<PackageManager> {
             update_single_args: &["upgrade"],
             list_args: &["list"],
             search_args: &["info"],
+            dry_run_args: &["--dry-run"],
+            update_cache_args: &[],
         })
     } else {
         None

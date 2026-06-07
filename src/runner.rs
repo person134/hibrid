@@ -1,3 +1,4 @@
+use colored::*;
 use std::io::{self, Write};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
@@ -74,7 +75,10 @@ pub fn run_command_with_output_detailed(program: &str, args: &[&str], pkg_manage
         }
         match cmd.status() {
             Ok(status) => (status.success(), String::new()),
-            Err(_) => (false, String::new()),
+            Err(e) => {
+                eprintln!("{}", format!("Failed to execute command: {}", e).red());
+                (false, String::new())
+            }
         }
     } else {
         let running = Arc::new(AtomicBool::new(true));
@@ -89,11 +93,24 @@ pub fn run_command_with_output_detailed(program: &str, args: &[&str], pkg_manage
 
         let result = match cmd.output() {
             Ok(output) => {
+                let success = output.status.success();
                 let stdout = String::from_utf8_lossy(&output.stdout).to_string();
                 let info = extract_package_info(&stdout, pkg_manager);
-                (output.status.success(), info)
+
+                if !success {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    let trimmed = stderr.trim();
+                    if !trimmed.is_empty() {
+                        eprintln!("{}", trimmed.red());
+                    }
+                }
+
+                (success, info)
             }
-            Err(_) => (false, String::new()),
+            Err(e) => {
+                eprintln!("{}", format!("Failed to execute command: {}", e).red());
+                (false, String::new())
+            }
         };
 
         running.store(false, Ordering::Relaxed);

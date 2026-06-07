@@ -22,6 +22,11 @@ fn main() {
         return;
     }
 
+    if args[1] == "-V" || args[1] == "--version" {
+        println!("Hibrid {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
+
     let system = detect_system();
     let filtered: Vec<&str> = args[1..].iter().map(|s| s.as_str()).collect();
 
@@ -47,7 +52,8 @@ fn print_help() {
     println!("{}", "║              Hibrid Package Manager Wrapper               ║".bright_cyan());
     println!("{}", "╚════════════════════════════════════════════════════════════╝".bright_cyan());
     println!();
-    println!("{}", "Usage: hibrid [-I|-R|-U|-L][a][q][f] [pkg]".bright_white().bold());
+    println!("{}", "Usage: hibrid [-I|-R|-U|-L][a][q][f][d] [pkg]".bright_white().bold());
+    println!("       hibrid -V");
     println!();
     println!("  {} Install package", "-I".green().bold());
     println!("  {} Remove package", "-R".red().bold());
@@ -58,6 +64,7 @@ fn print_help() {
     println!("  {} Autoinstall (skip confirmation)", "a".bright_yellow());
     println!("  {} Quiet output (suppress package manager output)", "q".bright_yellow());
     println!("  {} Use Flatpak (Linux only)", "f".bright_magenta());
+    println!("  {} Dry run (preview without making changes)", "d".bright_cyan());
     println!();
     println!("{}", "Supported backends:".bright_white().bold());
     println!("  Linux  : apt, pacman, dnf, emerge (binary/--usepkg only) + Flatpak");
@@ -68,11 +75,13 @@ fn print_help() {
     println!("  hibrid {} vim", "-I".green());
     println!("  hibrid {} vim", "-Ia".green());
     println!("  hibrid {} firefox", "-Iq".green());
+    println!("  hibrid {} vim", "-Id".green());
     println!("  hibrid {} package", "-R".red());
     println!("  hibrid {} spotify", "-If".bright_magenta());
     println!("  hibrid {}", "-U".yellow());
     println!("  hibrid {} vim", "-U".yellow());
     println!("  hibrid {}", "-L".cyan());
+    println!("  hibrid {}", "-V".bright_white());
 }
 
 fn handle_search(system: System, flags: Flags, packages: &[&str]) {
@@ -165,6 +174,10 @@ fn handle_update(system: System, flags: Flags, packages: &[&str]) {
                 println!("{}", "Update cancelled".yellow());
                 return;
             }
+            if flags.dry_run {
+                println!("Would update all flatpaks");
+                return;
+            }
             let (status, _) = run_command_with_output_detailed("flatpak", &["update", "-y"], "flatpak", !is_quiet);
             print_result(Action::Update, status);
         } else {
@@ -173,14 +186,22 @@ fn handle_update(system: System, flags: Flags, packages: &[&str]) {
                 .collect();
             println!("{}", format_box_multiple("Update Flatpak", packages_info).bright_magenta());
 
-            for package in packages {
-                if !skip_confirm && !ask_update_confirmation() {
-                    println!("{}", "Update cancelled".yellow());
-                    return;
-                }
-                let (status, _) = run_command_with_output_detailed("flatpak", &["update", "-y", package], "flatpak", !is_quiet);
-                print_result(Action::Update, status);
+            if !skip_confirm && !ask_update_confirmation() {
+                println!("{}", "Update cancelled".yellow());
+                return;
             }
+            if flags.dry_run {
+                for package in packages {
+                    println!("Would update {} via flatpak", package);
+                }
+                return;
+            }
+            let mut args: Vec<&str> = vec!["update", "-y"];
+            for package in packages {
+                args.push(package);
+            }
+            let (status, _) = run_command_with_output_detailed("flatpak", &args, "flatpak", !is_quiet);
+            print_result(Action::Update, status);
         }
         return;
     }
@@ -196,7 +217,22 @@ fn handle_update(system: System, flags: Flags, packages: &[&str]) {
                         println!("{}", "Update cancelled".yellow());
                         return;
                     }
+
+                    if !manager.update_cache_args.is_empty() {
+                        let mut cache_args = vec![manager.program];
+                        cache_args.extend(manager.update_cache_args);
+                        let _ = run_command_with_output_detailed("sudo", &cache_args, manager.program, !is_quiet);
+                    }
+
+                    if flags.dry_run {
+                        println!("Would upgrade all packages via {}", manager.program);
+                        return;
+                    }
+
                     let mut args = vec![manager.program];
+                    if flags.dry_run {
+                        args.extend(manager.dry_run_args);
+                    }
                     args.extend(manager.update_args);
                     let (status, _) = run_command_with_output_detailed("sudo", &args, manager.program, !is_quiet);
                     print_result(Action::Update, status);
@@ -206,17 +242,28 @@ fn handle_update(system: System, flags: Flags, packages: &[&str]) {
                         .collect();
                     println!("{}", format_box_multiple("Update", packages_info).bright_cyan());
 
-                    for package in packages {
-                        if !skip_confirm && !ask_update_confirmation() {
-                            println!("{}", "Update cancelled".yellow());
-                            return;
-                        }
-                        let mut args = vec![manager.program];
-                        args.extend(manager.update_single_args);
-                        args.push(package);
-                        let (status, _) = run_command_with_output_detailed("sudo", &args, manager.program, !is_quiet);
-                        print_result(Action::Update, status);
+                    if !skip_confirm && !ask_update_confirmation() {
+                        println!("{}", "Update cancelled".yellow());
+                        return;
                     }
+
+                    if flags.dry_run {
+                        for package in packages {
+                            println!("Would update {} via {}", package, manager.program);
+                        }
+                        return;
+                    }
+
+                    let mut args = vec![manager.program];
+                    if flags.dry_run {
+                        args.extend(manager.dry_run_args);
+                    }
+                    args.extend(manager.update_single_args);
+                    for package in packages {
+                        args.push(package);
+                    }
+                    let (status, _) = run_command_with_output_detailed("sudo", &args, manager.program, !is_quiet);
+                    print_result(Action::Update, status);
                 }
             }
             None => println!("{}", "No supported package manager found".red()),
@@ -231,8 +278,23 @@ fn handle_update(system: System, flags: Flags, packages: &[&str]) {
                         println!("{}", "Update cancelled".yellow());
                         return;
                     }
-                    let _ = run_command_with_output_detailed(manager.program, &["update"], manager.program, !is_quiet);
-                    let (status, _) = run_command_with_output_detailed(manager.program, manager.update_args, manager.program, !is_quiet);
+
+                    if flags.dry_run {
+                        println!("Would run brew update and upgrade all packages");
+                        return;
+                    }
+
+                    let mut update_args = vec!["update"];
+                    if flags.dry_run {
+                        update_args.extend(manager.dry_run_args);
+                    }
+                    let _ = run_command_with_output_detailed(manager.program, &update_args, manager.program, !is_quiet);
+
+                    let mut upgrade_args = manager.update_args.to_vec();
+                    if flags.dry_run {
+                        upgrade_args.extend(manager.dry_run_args);
+                    }
+                    let (status, _) = run_command_with_output_detailed(manager.program, &upgrade_args, manager.program, !is_quiet);
                     print_result(Action::Update, status);
                 } else {
                     let packages_info: Vec<(String, String, String)> = packages.iter()
@@ -240,16 +302,27 @@ fn handle_update(system: System, flags: Flags, packages: &[&str]) {
                         .collect();
                     println!("{}", format_box_multiple("Update", packages_info).bright_cyan());
 
-                    for package in packages {
-                        if !skip_confirm && !ask_update_confirmation() {
-                            println!("{}", "Update cancelled".yellow());
-                            return;
-                        }
-                        let mut args = manager.update_single_args.to_vec();
-                        args.push(package);
-                        let (status, _) = run_command_with_output_detailed(manager.program, &args, manager.program, !is_quiet);
-                        print_result(Action::Update, status);
+                    if !skip_confirm && !ask_update_confirmation() {
+                        println!("{}", "Update cancelled".yellow());
+                        return;
                     }
+
+                    if flags.dry_run {
+                        for package in packages {
+                            println!("Would upgrade {} via brew", package);
+                        }
+                        return;
+                    }
+
+                    let mut args = manager.update_single_args.to_vec();
+                    if flags.dry_run {
+                        args.extend(manager.dry_run_args);
+                    }
+                    for package in packages {
+                        args.push(package);
+                    }
+                    let (status, _) = run_command_with_output_detailed(manager.program, &args, manager.program, !is_quiet);
+                    print_result(Action::Update, status);
                 }
             }
             None => println!("{}", "No package manager found (is Homebrew installed?)".red()),
@@ -303,6 +376,13 @@ fn handle_install(system: System, flags: Flags, packages: &[&str]) {
             return;
         }
 
+        if flags.dry_run {
+            for full_app_id in &full_app_ids {
+                println!("Would install {} via flatpak", full_app_id);
+            }
+            return;
+        }
+
         for full_app_id in full_app_ids {
             let (status, _) = run_command_with_output_detailed("flatpak", &["install", "-y", "flathub", &full_app_id], "flatpak", !is_quiet);
             print_result(Action::Install, status);
@@ -337,14 +417,23 @@ fn handle_install(system: System, flags: Flags, packages: &[&str]) {
                     return;
                 }
 
-                for package in packages {
-                    let mut args = vec![manager.program];
-                    let mut base = manager.install_args.to_vec();
-                    base.push(package);
-                    args.extend(base);
-                    let (status, _) = run_command_with_output_detailed("sudo", &args, manager.program, !is_quiet);
-                    print_result(Action::Install, status);
+                if flags.dry_run {
+                    for package in packages {
+                        println!("Would install {} via {}", package, manager.program);
+                    }
+                    return;
                 }
+
+                let mut args = vec![manager.program];
+                if flags.dry_run {
+                    args.extend(manager.dry_run_args);
+                }
+                args.extend(manager.install_args);
+                for package in packages {
+                    args.push(package);
+                }
+                let (status, _) = run_command_with_output_detailed("sudo", &args, manager.program, !is_quiet);
+                print_result(Action::Install, status);
             }
             None => println!("{}", "No supported package manager found".red()),
         },
@@ -374,12 +463,22 @@ fn handle_install(system: System, flags: Flags, packages: &[&str]) {
                     return;
                 }
 
-                for package in packages {
-                    let mut args = manager.install_args.to_vec();
-                    args.push(package);
-                    let (status, _) = run_command_with_output_detailed(manager.program, &args, manager.program, !is_quiet);
-                    print_result(Action::Install, status);
+                if flags.dry_run {
+                    for package in packages {
+                        println!("Would install {} via brew", package);
+                    }
+                    return;
                 }
+
+                let mut args = manager.install_args.to_vec();
+                if flags.dry_run {
+                    args.extend(manager.dry_run_args);
+                }
+                for package in packages {
+                    args.push(package);
+                }
+                let (status, _) = run_command_with_output_detailed(manager.program, &args, manager.program, !is_quiet);
+                print_result(Action::Install, status);
             }
             None => println!("{}", "No package manager found (is Homebrew installed?)".red()),
         },
@@ -392,13 +491,24 @@ fn handle_install(system: System, flags: Flags, packages: &[&str]) {
                 update_single_args: &["upgrade", "--exact"],
                 list_args: &["list"],
                 search_args: &["search"],
+                dry_run_args: &["--dry-run"],
+                update_cache_args: &[],
             };
-            for package in packages {
-                let mut args = winget.install_args.to_vec();
-                args.push(package);
-                let (status, _) = run_command_with_output_detailed(winget.program, &args, winget.program, !is_quiet);
-                print_result(Action::Install, status);
+            if flags.dry_run {
+                for package in packages {
+                    println!("Would install {} via winget", package);
+                }
+                return;
             }
+            let mut args = winget.install_args.to_vec();
+            if flags.dry_run {
+                args.extend(winget.dry_run_args);
+            }
+            for package in packages {
+                args.push(package);
+            }
+            let (status, _) = run_command_with_output_detailed(winget.program, &args, winget.program, !is_quiet);
+            print_result(Action::Install, status);
         }
         System::Unknown => println!("{}", "Unsupported system".red()),
     }
@@ -454,6 +564,13 @@ fn handle_remove(system: System, flags: Flags, packages: &[&str]) {
             return;
         }
 
+        if flags.dry_run {
+            for app_id in &app_ids {
+                println!("Would uninstall {} via flatpak", app_id);
+            }
+            return;
+        }
+
         for app_id in app_ids {
             let (status, _) = run_command_with_output_detailed("flatpak", &["uninstall", "-y", &app_id], "flatpak", !is_quiet);
             print_result(Action::Remove, status);
@@ -488,14 +605,23 @@ fn handle_remove(system: System, flags: Flags, packages: &[&str]) {
                     return;
                 }
 
-                for package in packages {
-                    let mut args = vec![manager.program];
-                    let mut base = manager.remove_args.to_vec();
-                    base.push(package);
-                    args.extend(base);
-                    let (status, _) = run_command_with_output_detailed("sudo", &args, manager.program, !is_quiet);
-                    print_result(Action::Remove, status);
+                if flags.dry_run {
+                    for package in packages {
+                        println!("Would remove {} via {}", package, manager.program);
+                    }
+                    return;
                 }
+
+                let mut args = vec![manager.program];
+                if flags.dry_run {
+                    args.extend(manager.dry_run_args);
+                }
+                args.extend(manager.remove_args);
+                for package in packages {
+                    args.push(package);
+                }
+                let (status, _) = run_command_with_output_detailed("sudo", &args, manager.program, !is_quiet);
+                print_result(Action::Remove, status);
             }
             None => println!("{}", "No supported package manager found".red()),
         },
@@ -525,12 +651,22 @@ fn handle_remove(system: System, flags: Flags, packages: &[&str]) {
                     return;
                 }
 
-                for package in packages {
-                    let mut args = manager.remove_args.to_vec();
-                    args.push(package);
-                    let (status, _) = run_command_with_output_detailed(manager.program, &args, manager.program, !is_quiet);
-                    print_result(Action::Remove, status);
+                if flags.dry_run {
+                    for package in packages {
+                        println!("Would uninstall {} via brew", package);
+                    }
+                    return;
                 }
+
+                let mut args = manager.remove_args.to_vec();
+                if flags.dry_run {
+                    args.extend(manager.dry_run_args);
+                }
+                for package in packages {
+                    args.push(package);
+                }
+                let (status, _) = run_command_with_output_detailed(manager.program, &args, manager.program, !is_quiet);
+                print_result(Action::Remove, status);
             }
             None => println!("{}", "No package manager found (is Homebrew installed?)".red()),
         },
@@ -543,13 +679,24 @@ fn handle_remove(system: System, flags: Flags, packages: &[&str]) {
                 update_single_args: &["upgrade", "--exact"],
                 list_args: &["list"],
                 search_args: &["search"],
+                dry_run_args: &["--dry-run"],
+                update_cache_args: &[],
             };
-            for package in packages {
-                let mut args = winget.remove_args.to_vec();
-                args.push(package);
-                let (status, _) = run_command_with_output_detailed(winget.program, &args, winget.program, !is_quiet);
-                print_result(Action::Remove, status);
+            if flags.dry_run {
+                for package in packages {
+                    println!("Would uninstall {} via winget", package);
+                }
+                return;
             }
+            let mut args = winget.remove_args.to_vec();
+            if flags.dry_run {
+                args.extend(winget.dry_run_args);
+            }
+            for package in packages {
+                args.push(package);
+            }
+            let (status, _) = run_command_with_output_detailed(winget.program, &args, winget.program, !is_quiet);
+            print_result(Action::Remove, status);
         }
         System::Unknown => println!("{}", "Unsupported system".red()),
     }
