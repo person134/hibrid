@@ -22,11 +22,7 @@ fn parse_search_output(output: &str, pkg_manager: &str) -> (String, String) {
                     size = line.split(':').nth(1).unwrap_or("").trim().to_string();
                 }
             }
-            if repo.is_empty() {
-                (String::new(), String::new())
-            } else {
-                (repo, if size.is_empty() { "available".to_string() } else { size })
-            }
+            (repo, size)
         }
         "apt" => {
             for line in output.lines() {
@@ -224,7 +220,7 @@ fn get_flatpak_size(app_id: &str) -> String {
 pub fn search_package_linux(package: &str, manager: &PackageManager) -> Option<SearchResult> {
     let (repo, size) = search_info(manager, package);
 
-    if size.is_empty() {
+    if repo.is_empty() && size.is_empty() {
         return None;
     }
 
