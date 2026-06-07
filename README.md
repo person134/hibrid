@@ -33,14 +33,18 @@ cargo build --release
 ```
 The binary will be at `target/release/hibrid` (or `hibrid.exe` on Windows).
 
-To install it system-wide (or uninstall later), run the unified script:
+To install it system-wide (or uninstall later), run the script for your OS:
+
+**Linux / macOS:**
 ```bash
 cd install-uninstall
 chmod +x install.sh
 ./install.sh
 ```
 
-It will ask for your platform, let you choose install or uninstall, check for existing installations, and auto-install Rust/Cargo if missing.
+**Windows:** Right-click `install.bat` and select **Run as administrator**.
+
+The scripts will ask whether to install or uninstall, check for existing installations, and auto-install Rust/Cargo if missing.
 
 ## Usage
 
