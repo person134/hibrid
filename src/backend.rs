@@ -57,28 +57,6 @@ pub fn detect_linux_package_manager() -> Option<PackageManager> {
             update_cache_args: &["update"],
         },
         PackageManager {
-            program: "yay",
-            install_args: &["-S", "--noconfirm"],
-            remove_args: &["-R", "--noconfirm"],
-            update_args: &["-Syu", "--noconfirm"],
-            update_single_args: &["-S", "--noconfirm"],
-            list_args: &["-Q"],
-            search_args: &["-Si"],
-            dry_run_args: &["--print"],
-            update_cache_args: &[],
-        },
-        PackageManager {
-            program: "paru",
-            install_args: &["-S", "--noconfirm"],
-            remove_args: &["-R", "--noconfirm"],
-            update_args: &["-Syu", "--noconfirm"],
-            update_single_args: &["-S", "--noconfirm"],
-            list_args: &["-Q"],
-            search_args: &["-Si"],
-            dry_run_args: &["--print"],
-            update_cache_args: &[],
-        },
-        PackageManager {
             program: "pacman",
             install_args: &["-S", "--noconfirm"],
             remove_args: &["-R", "--noconfirm"],
@@ -124,6 +102,29 @@ pub fn detect_linux_package_manager() -> Option<PackageManager> {
 
 pub fn requires_sudo(manager: &PackageManager) -> bool {
     !matches!(manager.program, "yay" | "paru")
+}
+
+fn aur_helper(program: &'static str) -> PackageManager {
+    PackageManager {
+        program,
+        install_args: &["-S", "--noconfirm"],
+        remove_args: &["-R", "--noconfirm"],
+        update_args: &["-Syu", "--noconfirm"],
+        update_single_args: &["-S", "--noconfirm"],
+        list_args: &["-Q"],
+        search_args: &["-Si"],
+        dry_run_args: &["--print"],
+        update_cache_args: &[],
+    }
+}
+
+pub fn detect_aur_helper() -> Option<PackageManager> {
+    for prog in &["yay", "paru"] {
+        if command_exists(prog) {
+            return Some(aur_helper(prog));
+        }
+    }
+    None
 }
 
 pub fn detect_macos_package_manager() -> Option<PackageManager> {

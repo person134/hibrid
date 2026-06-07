@@ -22,7 +22,11 @@ fn parse_search_output(output: &str, pkg_manager: &str) -> (String, String) {
                     size = line.split(':').nth(1).unwrap_or("").trim().to_string();
                 }
             }
-            (repo, size)
+            if repo.is_empty() {
+                (String::new(), String::new())
+            } else {
+                (repo, if size.is_empty() { "available".to_string() } else { size })
+            }
         }
         "apt" => {
             for line in output.lines() {

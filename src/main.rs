@@ -5,11 +5,12 @@ mod search;
 mod ui;
 
 use std::env;
+use std::io::{self, Write};
 use std::process::exit;
 use colored::*;
 
 use action::{Action, Flags, parse_arguments};
-use backend::{System, detect_system, detect_linux_package_manager, detect_macos_package_manager, requires_sudo, command_exists, PackageManager};
+use backend::{System, detect_system, detect_linux_package_manager, detect_macos_package_manager, detect_aur_helper, requires_sudo, command_exists, PackageManager};
 use runner::run_command_with_output_detailed;
 use search::{search_info, search_package_linux, search_package_flatpak, get_installed_package_info, fuzzy_match_flatpak, fuzzy_match_flatpak_with_size, is_flatpak_installed};
 use ui::{format_box_multiple, format_search_box, print_result, ask_confirmation, ask_removal_confirmation, ask_update_confirmation, ask_flatpak_install};
@@ -77,7 +78,7 @@ fn print_help() {
     println!("  -h, --help     Show this help message");
     println!();
     println!("{}", "Supported backends:".bright_white().bold());
-    println!("  Linux  : apt, pacman, dnf, emerge, yay, paru + Flatpak");
+    println!("  Linux  : apt, pacman, dnf, emerge + Flatpak (AUR via yay/paru)");
     println!("  macOS  : Homebrew");
     println!("  Windows: winget");
     println!();
@@ -115,6 +116,27 @@ fn ensure_flatpak_installed() -> bool {
     status
 }
 
+fn ensure_aur_helper() -> Option<PackageManager> {
+    if let Some(helper) = detect_aur_helper() {
+        return Some(helper);
+    }
+    println!("{}", "This package is only available in the AUR.".yellow());
+    print!("{} {} {} ", "?".bright_cyan().bold(), "Install yay (AUR helper) now?".bright_white(), "(Y/n):".bright_black());
+    io::stdout().flush().unwrap();
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+    if !input.trim().is_empty() && !input.trim().eq_ignore_ascii_case("y") && !input.trim().eq_ignore_ascii_case("yes") {
+        return None;
+    }
+    let args = ["pacman", "-S", "--noconfirm", "yay"];
+    let (status, _) = run_command_with_output_detailed("sudo", &args, "pacman", true);
+    if !status {
+        println!("{}", "Failed to install yay".red());
+        return None;
+    }
+    detect_aur_helper()
+}
+
 fn handle_search(system: System, flags: Flags, packages: &[&str]) {
     if packages.is_empty() {
         println!("{}", "No package given".red());
@@ -139,7 +161,17 @@ fn handle_search(system: System, flags: Flags, packages: &[&str]) {
         System::Linux => match detect_linux_package_manager() {
             Some(manager) => match search_package_linux(package, &manager) {
                 Some(result) => println!("{}", format_search_box(package, &result).bright_cyan()),
-                None => println!("{}", format!("{}: Package not found", package).red()),
+                None => {
+                    if manager.program == "pacman" {
+                        if let Some(aur) = detect_aur_helper() {
+                            if let Some(result) = search_package_linux(package, &aur) {
+                                println!("{}", format_search_box(package, &result).bright_magenta());
+                                return;
+                            }
+                        }
+                    }
+                    println!("{}", format!("{}: Package not found", package).red());
+                }
             },
             None => println!("{}", "No supported package manager found".red()),
         },
@@ -427,46 +459,61 @@ fn handle_install(system: System, flags: Flags, packages: &[&str]) {
     }
 
     match system {
-        System::Linux => match detect_linux_package_manager() {
-            Some(manager) => {
-                let mut packages_info = Vec::new();
+        System::Linux => {
+            let manager = match detect_linux_package_manager() {
+                Some(m) => m,
+                None => { println!("{}", "No supported package manager found".red()); return; }
+            };
 
+            let mut effective = manager;
+            if effective.program == "pacman" {
+                let mut needs_aur = false;
                 for package in packages {
-                    let (repo, size) = search_info(&manager, package);
-                    if size.is_empty() {
-                        eprintln!("{}", format!("Warning: {} not found in repositories, attempting install anyway", package).yellow());
+                    if search_info(&effective, package).1.is_empty() {
+                        needs_aur = true;
+                        break;
                     }
-                    packages_info.push((package.to_string(), repo, size));
                 }
-
-                println!("{}", format_box_multiple("Install", packages_info).bright_cyan());
-
-                if !skip_confirm && !ask_confirmation() {
-                    println!("{}", "Installation cancelled".yellow());
-                    return;
-                }
-
-                if flags.dry_run {
-                    for package in packages {
-                        println!("Would install {} via {}", package, manager.program);
+                if needs_aur {
+                    match ensure_aur_helper() {
+                        Some(aur) => effective = aur,
+                        None => return,
                     }
-                    return;
                 }
-
-                let mut args = vec![manager.program];
-                if flags.dry_run {
-                    args.extend(manager.dry_run_args);
-                }
-                args.extend(manager.install_args);
-                for package in packages {
-                    args.push(package);
-                }
-                let (prog, cmd_args) = if requires_sudo(&manager) { ("sudo", args.as_slice()) } else { (manager.program, &args[1..]) };
-                let (status, _) = run_command_with_output_detailed(prog, cmd_args, manager.program, !is_quiet);
-                print_result(Action::Install, status);
             }
-            None => println!("{}", "No supported package manager found".red()),
-        },
+
+            let mut packages_info = Vec::new();
+            for package in packages {
+                let (repo, size) = search_info(&effective, package);
+                packages_info.push((package.to_string(), if repo.is_empty() { "AUR".to_string() } else { repo }, size));
+            }
+
+            println!("{}", format_box_multiple("Install", packages_info).bright_cyan());
+
+            if !skip_confirm && !ask_confirmation() {
+                println!("{}", "Installation cancelled".yellow());
+                return;
+            }
+
+            if flags.dry_run {
+                for package in packages {
+                    println!("Would install {} via {}", package, effective.program);
+                }
+                return;
+            }
+
+            let mut args = vec![effective.program];
+            if flags.dry_run {
+                args.extend(effective.dry_run_args);
+            }
+            args.extend(effective.install_args);
+            for package in packages {
+                args.push(package);
+            }
+            let (prog, cmd_args) = if requires_sudo(&effective) { ("sudo", args.as_slice()) } else { (effective.program, &args[1..]) };
+            let (status, _) = run_command_with_output_detailed(prog, cmd_args, effective.program, !is_quiet);
+            print_result(Action::Install, status);
+        }
         System::MacOS => match detect_macos_package_manager() {
             Some(manager) => {
                 let mut packages_info = Vec::new();
@@ -603,46 +650,61 @@ fn handle_remove(system: System, flags: Flags, packages: &[&str]) {
     }
 
     match system {
-        System::Linux => match detect_linux_package_manager() {
-            Some(manager) => {
-                let mut packages_info = Vec::new();
+        System::Linux => {
+            let manager = match detect_linux_package_manager() {
+                Some(m) => m,
+                None => { println!("{}", "No supported package manager found".red()); return; }
+            };
 
+            let mut effective = manager;
+            if effective.program == "pacman" {
+                let mut needs_aur = false;
                 for package in packages {
-                    let (_, size) = get_installed_package_info(&manager, package);
-                    if size.is_empty() {
-                        eprintln!("{}", format!("Warning: {} not detected as installed, attempting removal anyway", package).yellow());
+                    if get_installed_package_info(&effective, package).1.is_empty() {
+                        needs_aur = true;
+                        break;
                     }
-                    packages_info.push((package.to_string(), String::new(), size));
                 }
-
-                println!("{}", format_box_multiple("Remove", packages_info).bright_red());
-
-                if !skip_confirm && !ask_removal_confirmation() {
-                    println!("{}", "Removal cancelled".yellow());
-                    return;
-                }
-
-                if flags.dry_run {
-                    for package in packages {
-                        println!("Would remove {} via {}", package, manager.program);
+                if needs_aur {
+                    match ensure_aur_helper() {
+                        Some(aur) => effective = aur,
+                        None => return,
                     }
-                    return;
                 }
-
-                let mut args = vec![manager.program];
-                if flags.dry_run {
-                    args.extend(manager.dry_run_args);
-                }
-                args.extend(manager.remove_args);
-                for package in packages {
-                    args.push(package);
-                }
-                let (prog, cmd_args) = if requires_sudo(&manager) { ("sudo", args.as_slice()) } else { (manager.program, &args[1..]) };
-                let (status, _) = run_command_with_output_detailed(prog, cmd_args, manager.program, !is_quiet);
-                print_result(Action::Remove, status);
             }
-            None => println!("{}", "No supported package manager found".red()),
-        },
+
+            let mut packages_info = Vec::new();
+            for package in packages {
+                let (_, size) = get_installed_package_info(&effective, package);
+                packages_info.push((package.to_string(), String::new(), size));
+            }
+
+            println!("{}", format_box_multiple("Remove", packages_info).bright_red());
+
+            if !skip_confirm && !ask_removal_confirmation() {
+                println!("{}", "Removal cancelled".yellow());
+                return;
+            }
+
+            if flags.dry_run {
+                for package in packages {
+                    println!("Would remove {} via {}", package, effective.program);
+                }
+                return;
+            }
+
+            let mut args = vec![effective.program];
+            if flags.dry_run {
+                args.extend(effective.dry_run_args);
+            }
+            args.extend(effective.remove_args);
+            for package in packages {
+                args.push(package);
+            }
+            let (prog, cmd_args) = if requires_sudo(&effective) { ("sudo", args.as_slice()) } else { (effective.program, &args[1..]) };
+            let (status, _) = run_command_with_output_detailed(prog, cmd_args, effective.program, !is_quiet);
+            print_result(Action::Remove, status);
+        }
         System::MacOS => match detect_macos_package_manager() {
             Some(manager) => {
                 let mut packages_info = Vec::new();
