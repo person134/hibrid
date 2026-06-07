@@ -131,9 +131,6 @@ src/
   main.rs      - Dispatch logic (ties everything together)
 tests/
 examples/
-.github/
-  workflows/
-    ci.yml     - GitHub Actions (build + test on Linux/macOS/Windows)
 ```
 
 ## License
