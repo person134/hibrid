@@ -11,7 +11,7 @@ pub struct SearchResult {
 
 fn parse_search_output(output: &str, pkg_manager: &str) -> (String, String) {
     match pkg_manager {
-        "pacman" => {
+        "pacman" | "yay" | "paru" => {
             let mut repo = String::new();
             let mut size = String::new();
             for line in output.lines() {
@@ -82,7 +82,7 @@ pub fn search_info(manager: &PackageManager, package: &str) -> (String, String) 
 
 fn parse_installed_output(output: &str, pkg_manager: &str) -> (String, String) {
     match pkg_manager {
-        "pacman" => {
+        "pacman" | "yay" | "paru" => {
             let mut size = String::new();
             for line in output.lines() {
                 if line.starts_with("Installed Size") {
@@ -135,7 +135,7 @@ fn parse_installed_output(output: &str, pkg_manager: &str) -> (String, String) {
 
 pub fn get_installed_package_info(manager: &PackageManager, package: &str) -> (String, String) {
     let args: Vec<&str> = match manager.program {
-        "pacman" => vec!["-Qi", package],
+        "pacman" | "yay" | "paru" => vec!["-Qi", package],
         "apt" => vec!["show", package],
         "dnf" => vec!["list", "installed", package],
         "emerge" => vec!["--info", package],
@@ -238,7 +238,7 @@ pub fn search_package_linux(package: &str, manager: &PackageManager) -> Option<S
 
 fn extract_version_from_manager(package: &str, manager: &PackageManager) -> String {
     match manager.program {
-        "pacman" => {
+        "pacman" | "yay" | "paru" => {
             let output = match Command::new(manager.program).args(&["-Si", package]).output() {
                 Ok(out) => out,
                 Err(_) => return String::new(),
@@ -333,7 +333,7 @@ fn extract_version_from_manager(package: &str, manager: &PackageManager) -> Stri
 
 fn extract_description_from_manager(package: &str, manager: &PackageManager) -> String {
     match manager.program {
-        "pacman" => {
+        "pacman" | "yay" | "paru" => {
             let output = match Command::new(manager.program)
                 .args(&["-Si", package])
                 .output()
