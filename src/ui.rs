@@ -123,30 +123,33 @@ pub fn print_result(action: Action, success: bool) {
 
 pub fn ask_confirmation() -> bool {
     print!("{} {} {} ", "?".bright_cyan().bold(), "Proceed with".bright_white(), "installation?".green().bold());
-    print!("{} ", "(Y/N):".bright_black());
+    print!("{} ", "(Y/n):".bright_black());
     io::stdout().flush().unwrap();
 
     let mut input = String::new();
     io::stdin().read_line(&mut input).unwrap();
-    input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes")
+    let trimmed = input.trim();
+    trimmed.is_empty() || trimmed.eq_ignore_ascii_case("y") || trimmed.eq_ignore_ascii_case("yes")
 }
 
 pub fn ask_removal_confirmation() -> bool {
     print!("{} {} {} ", "!".bright_red().bold(), "Remove this".bright_white(), "package?".red().bold());
-    print!("{} ", "(Y/N):".bright_black());
+    print!("{} ", "(Y/n):".bright_black());
     io::stdout().flush().unwrap();
 
     let mut input = String::new();
     io::stdin().read_line(&mut input).unwrap();
-    input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes")
+    let trimmed = input.trim();
+    trimmed.is_empty() || trimmed.eq_ignore_ascii_case("y") || trimmed.eq_ignore_ascii_case("yes")
 }
 
 pub fn ask_update_confirmation() -> bool {
     print!("{} {} {} ", "⟳".bright_yellow().bold(), "Update this".bright_white(), "package?".yellow().bold());
-    print!("{} ", "(Y/N):".bright_black());
+    print!("{} ", "(Y/n):".bright_black());
     io::stdout().flush().unwrap();
 
     let mut input = String::new();
     io::stdin().read_line(&mut input).unwrap();
-    input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes")
+    let trimmed = input.trim();
+    trimmed.is_empty() || trimmed.eq_ignore_ascii_case("y") || trimmed.eq_ignore_ascii_case("yes")
 }
