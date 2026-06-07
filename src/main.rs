@@ -9,10 +9,10 @@ use std::process::exit;
 use colored::*;
 
 use action::{Action, Flags, parse_arguments};
-use backend::{System, detect_system, detect_linux_package_manager, detect_macos_package_manager, requires_sudo, PackageManager};
+use backend::{System, detect_system, detect_linux_package_manager, detect_macos_package_manager, requires_sudo, command_exists, PackageManager};
 use runner::run_command_with_output_detailed;
 use search::{search_info, search_package_linux, search_package_flatpak, get_installed_package_info, fuzzy_match_flatpak, fuzzy_match_flatpak_with_size, is_flatpak_installed};
-use ui::{format_box_multiple, format_search_box, print_result, ask_confirmation, ask_removal_confirmation, ask_update_confirmation};
+use ui::{format_box_multiple, format_search_box, print_result, ask_confirmation, ask_removal_confirmation, ask_update_confirmation, ask_flatpak_install};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -93,6 +93,28 @@ fn print_help() {
     println!("  hibrid -V");
 }
 
+fn ensure_flatpak_installed() -> bool {
+    if command_exists("flatpak") {
+        return true;
+    }
+    if !ask_flatpak_install() {
+        return false;
+    }
+    let manager = match detect_linux_package_manager() {
+        Some(m) => m,
+        None => {
+            println!("{}", "No package manager found to install Flatpak".red());
+            return false;
+        }
+    };
+    let mut args = vec![manager.program];
+    args.extend(manager.install_args);
+    args.push("flatpak");
+    let (prog, cmd_args) = if requires_sudo(&manager) { ("sudo", args.as_slice()) } else { (manager.program, &args[1..]) };
+    let (status, _) = run_command_with_output_detailed(prog, cmd_args, manager.program, true);
+    status
+}
+
 fn handle_search(system: System, flags: Flags, packages: &[&str]) {
     if packages.is_empty() {
         println!("{}", "No package given".red());
@@ -102,6 +124,7 @@ fn handle_search(system: System, flags: Flags, packages: &[&str]) {
 
     if flags.flatpak {
         if system == System::Linux {
+            if !ensure_flatpak_installed() { return; }
             match search_package_flatpak(package) {
                 Some(result) => println!("{}", format_search_box(package, &result).bright_magenta()),
                 None => println!("{}", format!("{}: Package not found", package).red()),
@@ -136,6 +159,7 @@ fn handle_list(system: System, flags: Flags) {
     match system {
         System::Linux => {
             if flags.flatpak {
+                if !ensure_flatpak_installed() { return; }
                 run_command_with_output_detailed("flatpak", &["list", "--app"], "flatpak", true);
             } else {
                 match detect_linux_package_manager() {
@@ -172,6 +196,7 @@ fn handle_update(system: System, flags: Flags, packages: &[&str]) {
             println!("{}", "Flatpak is not available on this system".red());
             return;
         }
+        if !ensure_flatpak_installed() { return; }
 
         if packages.is_empty() {
             println!("{}", format_box_multiple("Update Flatpak", vec![
@@ -356,6 +381,7 @@ fn handle_install(system: System, flags: Flags, packages: &[&str]) {
             println!("{}", "Flatpak is not available on this system".red());
             return;
         }
+        if !ensure_flatpak_installed() { return; }
 
         let mut all_valid = true;
         let mut packages_info = Vec::new();
@@ -525,6 +551,7 @@ fn handle_remove(system: System, flags: Flags, packages: &[&str]) {
             println!("{}", "Flatpak is not available on this system".red());
             return;
         }
+        if !ensure_flatpak_installed() { return; }
 
         let mut all_valid = true;
         let mut packages_info = Vec::new();

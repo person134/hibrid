@@ -143,6 +143,17 @@ pub fn ask_removal_confirmation() -> bool {
     trimmed.is_empty() || trimmed.eq_ignore_ascii_case("y") || trimmed.eq_ignore_ascii_case("yes")
 }
 
+pub fn ask_flatpak_install() -> bool {
+    println!("{}", "Flatpak is required but not installed.".yellow());
+    print!("{} {} {} ", "?".bright_cyan().bold(), "Install Flatpak now?".bright_white(), "(Y/n):".bright_black());
+    io::stdout().flush().unwrap();
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+    let trimmed = input.trim();
+    trimmed.is_empty() || trimmed.eq_ignore_ascii_case("y") || trimmed.eq_ignore_ascii_case("yes")
+}
+
 pub fn ask_update_confirmation() -> bool {
     print!("{} {} {} ", "⟳".bright_yellow().bold(), "Update this".bright_white(), "package?".yellow().bold());
     print!("{} ", "(Y/n):".bright_black());
