@@ -266,7 +266,7 @@ fn extract_version_from_manager(package: &str, manager: &PackageManager) -> Stri
         }
         "apt" => {
             let output = match Command::new(manager.program)
-                .args(&["cache", "show", package])
+                .args(&["show", package])
                 .output()
             {
                 Ok(out) => out,
@@ -364,7 +364,7 @@ fn extract_description_from_manager(package: &str, manager: &PackageManager) -> 
         }
         "apt" => {
             let output = match Command::new(manager.program)
-                .args(&["cache", "show", package])
+                .args(&["show", package])
                 .output()
             {
                 Ok(out) => out,

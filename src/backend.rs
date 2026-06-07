@@ -50,7 +50,7 @@ pub fn detect_linux_package_manager() -> Option<PackageManager> {
             update_args: &["upgrade", "-y"],
             update_single_args: &["install", "--only-upgrade", "-y"],
             list_args: &["list", "--installed"],
-            search_args: &["cache", "show"],
+            search_args: &["show"],
         },
         PackageManager {
             program: "pacman",
