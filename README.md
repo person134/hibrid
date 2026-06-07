@@ -1,6 +1,6 @@
 # Hibrid
 
-A lightweight cross-platform package manager wrapper. Hibrid gives you one CLI to install, remove, update, and search packages — no matter which package manager your system uses.
+A lightweight cross-platform package manager wrapper. Hibrid gives you one CLI to install, remove, update, and search packages, no matter which package manager your system uses.
 
 ```
 hibrid -I firefox       # install with apt/pacman/dnf/emerge/brew/winget
@@ -17,7 +17,7 @@ hibrid -U               # update everything
 | macOS | Homebrew |
 | Linux | apt, pacman, dnf, portage + Flatpak |
 
-Hibrid auto-detects which package manager is installed on Linux — no config needed.
+Hibrid auto-detects which package manager is installed on Linux. No config needed.
 
 ## Quick start
 
@@ -102,16 +102,16 @@ cargo test               # run tests
 
 ```
 src/
-  action.rs    — Action enum + Flags struct + CLI parsing
-  backend.rs   — System/package manager detection
-  runner.rs    — Command execution with spinner support
-  search.rs    — Package search, info extraction, Flatpak helpers
-  ui.rs        — Box formatting, confirmation prompts, output
-  main.rs      — Dispatch logic (ties everything together)
+  action.rs    - Action enum, Flags struct, CLI parsing
+  backend.rs   - System and package manager detection
+  runner.rs    - Command execution with spinner support
+  search.rs    - Package search, info extraction, Flatpak helpers
+  ui.rs        - Box formatting, confirmation prompts, output
+  main.rs      - Dispatch logic (ties everything together)
 tests/
 examples/
 ```
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+MIT. See [LICENSE](LICENSE)
