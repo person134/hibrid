@@ -9,7 +9,7 @@ use std::process::exit;
 use colored::*;
 
 use action::{Action, Flags, parse_arguments};
-use backend::{System, detect_system, detect_linux_package_manager, detect_macos_package_manager, PackageManager};
+use backend::{System, detect_system, detect_linux_package_manager, detect_macos_package_manager, requires_sudo, PackageManager};
 use runner::run_command_with_output_detailed;
 use search::{search_info, search_package_linux, search_package_flatpak, get_installed_package_info, fuzzy_match_flatpak, fuzzy_match_flatpak_with_size, is_flatpak_installed};
 use ui::{format_box_multiple, format_search_box, print_result, ask_confirmation, ask_removal_confirmation, ask_update_confirmation};
@@ -228,7 +228,8 @@ fn handle_update(system: System, flags: Flags, packages: &[&str]) {
                     if !manager.update_cache_args.is_empty() {
                         let mut cache_args = vec![manager.program];
                         cache_args.extend(manager.update_cache_args);
-                        let _ = run_command_with_output_detailed("sudo", &cache_args, manager.program, !is_quiet);
+                        let (cache_prog, cache_slice) = if requires_sudo(&manager) { ("sudo", cache_args.as_slice()) } else { (manager.program, &cache_args[1..]) };
+                        let _ = run_command_with_output_detailed(cache_prog, cache_slice, manager.program, !is_quiet);
                     }
 
                     if flags.dry_run {
@@ -241,7 +242,8 @@ fn handle_update(system: System, flags: Flags, packages: &[&str]) {
                         args.extend(manager.dry_run_args);
                     }
                     args.extend(manager.update_args);
-                    let (status, _) = run_command_with_output_detailed("sudo", &args, manager.program, !is_quiet);
+                    let (prog, cmd_args) = if requires_sudo(&manager) { ("sudo", args.as_slice()) } else { (manager.program, &args[1..]) };
+                    let (status, _) = run_command_with_output_detailed(prog, cmd_args, manager.program, !is_quiet);
                     print_result(Action::Update, status);
                 } else {
                     let packages_info: Vec<(String, String, String)> = packages.iter()
@@ -269,7 +271,8 @@ fn handle_update(system: System, flags: Flags, packages: &[&str]) {
                     for package in packages {
                         args.push(package);
                     }
-                    let (status, _) = run_command_with_output_detailed("sudo", &args, manager.program, !is_quiet);
+                    let (prog, cmd_args) = if requires_sudo(&manager) { ("sudo", args.as_slice()) } else { (manager.program, &args[1..]) };
+                    let (status, _) = run_command_with_output_detailed(prog, cmd_args, manager.program, !is_quiet);
                     print_result(Action::Update, status);
                 }
             }
@@ -432,7 +435,8 @@ fn handle_install(system: System, flags: Flags, packages: &[&str]) {
                 for package in packages {
                     args.push(package);
                 }
-                let (status, _) = run_command_with_output_detailed("sudo", &args, manager.program, !is_quiet);
+                let (prog, cmd_args) = if requires_sudo(&manager) { ("sudo", args.as_slice()) } else { (manager.program, &args[1..]) };
+                let (status, _) = run_command_with_output_detailed(prog, cmd_args, manager.program, !is_quiet);
                 print_result(Action::Install, status);
             }
             None => println!("{}", "No supported package manager found".red()),
@@ -606,7 +610,8 @@ fn handle_remove(system: System, flags: Flags, packages: &[&str]) {
                 for package in packages {
                     args.push(package);
                 }
-                let (status, _) = run_command_with_output_detailed("sudo", &args, manager.program, !is_quiet);
+                let (prog, cmd_args) = if requires_sudo(&manager) { ("sudo", args.as_slice()) } else { (manager.program, &args[1..]) };
+                let (status, _) = run_command_with_output_detailed(prog, cmd_args, manager.program, !is_quiet);
                 print_result(Action::Remove, status);
             }
             None => println!("{}", "No supported package manager found".red()),

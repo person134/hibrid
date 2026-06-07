@@ -122,6 +122,10 @@ pub fn detect_linux_package_manager() -> Option<PackageManager> {
     None
 }
 
+pub fn requires_sudo(manager: &PackageManager) -> bool {
+    !matches!(manager.program, "yay" | "paru")
+}
+
 pub fn detect_macos_package_manager() -> Option<PackageManager> {
     if command_exists("brew") {
         Some(PackageManager {
