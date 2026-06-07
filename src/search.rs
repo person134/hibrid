@@ -51,25 +51,14 @@ fn parse_search_output(output: &str, pkg_manager: &str) -> (String, String) {
             (String::new(), String::new())
         }
         "brew" => {
-            let mut repo = String::new();
-            let mut size = String::new();
             for line in output.lines() {
-                if line.contains("files,") {
-                    if let Some(s) = line.split(',').nth(1) {
-                        size = s.trim().to_string();
-                    }
+                let trimmed = line.trim();
+                if trimmed.starts_with("==") || trimmed.is_empty() {
+                    continue;
                 }
-                if line.contains("homebrew") || line.contains("Homebrew") {
-                    repo = "homebrew".to_string();
-                }
+                return ("homebrew".to_string(), "available".to_string());
             }
-            if size.is_empty() && !output.trim().is_empty() {
-                size = "available".to_string();
-            }
-            if repo.is_empty() && !output.trim().is_empty() {
-                repo = "homebrew".to_string();
-            }
-            (repo, size)
+            (String::new(), String::new())
         }
         _ => (String::new(), String::new()),
     }

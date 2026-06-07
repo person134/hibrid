@@ -109,7 +109,7 @@ pub fn detect_macos_package_manager() -> Option<PackageManager> {
             update_args: &["upgrade"],
             update_single_args: &["upgrade"],
             list_args: &["list"],
-            search_args: &["info"],
+            search_args: &["search"],
             dry_run_args: &["--dry-run"],
             update_cache_args: &[],
         })

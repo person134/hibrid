@@ -7,7 +7,7 @@ pub enum Action {
     Search,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Flags {
     pub autoinstall: bool,
     pub quiet: bool,
@@ -60,6 +60,69 @@ pub fn parse_action(flag: &str) -> Option<(Action, Flags)> {
         }
         _ => None,
     }
+}
+
+pub fn parse_arguments<'a>(args: &[&'a str]) -> Option<(Action, Flags, Vec<&'a str>)> {
+    if args.is_empty() {
+        return None;
+    }
+    let first = args[0];
+    if first.starts_with('-') {
+        let (action, flags) = parse_action(first)?;
+        let packages = args[1..].to_vec();
+        Some((action, flags, packages))
+    } else {
+        parse_word_action(args)
+    }
+}
+
+fn parse_word_action<'a>(args: &[&'a str]) -> Option<(Action, Flags, Vec<&'a str>)> {
+    let action = match args[0] {
+        "install" => Action::Install,
+        "remove" => Action::Remove,
+        "update" => Action::Update,
+        "list" => Action::List,
+        "search" => Action::Search,
+        _ => return None,
+    };
+
+    let mut flags = Flags::default();
+    let mut packages = Vec::new();
+    let mut seen_double_dash = false;
+
+    for arg in &args[1..] {
+        if seen_double_dash {
+            packages.push(*arg);
+            continue;
+        }
+        if *arg == "--" {
+            seen_double_dash = true;
+            continue;
+        }
+        if arg.starts_with("--") {
+            match *arg {
+                "--yes" => flags.autoinstall = true,
+                "--quiet" => flags.quiet = true,
+                "--flatpak" => flags.flatpak = true,
+                "--dry-run" => flags.dry_run = true,
+                _ => return None,
+            }
+        } else if arg.starts_with('-') && arg.len() > 1 {
+            for c in arg[1..].chars() {
+                match c {
+                    'y' => flags.autoinstall = true,
+                    'q' => flags.quiet = true,
+                    'f' => flags.flatpak = true,
+                    'd' => flags.dry_run = true,
+                    _ => return None,
+                }
+            }
+        } else {
+            packages.push(*arg);
+        }
+    }
+
+    Some((action, flags, packages))
 }
 
 #[cfg(test)]

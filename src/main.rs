@@ -8,7 +8,7 @@ use std::env;
 use std::process::exit;
 use colored::*;
 
-use action::{Action, Flags, parse_action};
+use action::{Action, Flags, parse_arguments};
 use backend::{System, detect_system, detect_linux_package_manager, detect_macos_package_manager, PackageManager};
 use runner::run_command_with_output_detailed;
 use search::{search_info, search_package_linux, search_package_flatpak, get_installed_package_info, fuzzy_match_flatpak, fuzzy_match_flatpak_with_size, is_flatpak_installed};
@@ -27,16 +27,19 @@ fn main() {
         return;
     }
 
+    if args[1] == "-h" || args[1] == "--help" {
+        print_help();
+        return;
+    }
+
     let system = detect_system();
     let filtered: Vec<&str> = args[1..].iter().map(|s| s.as_str()).collect();
 
-    let (action, flags) = parse_action(filtered.get(0).unwrap_or(&""))
+    let (action, flags, packages) = parse_arguments(&filtered)
         .unwrap_or_else(|| {
             println!("{}", "Invalid command".red());
             exit(1);
         });
-
-    let packages: Vec<&str> = filtered.get(1..).unwrap_or(&[]).to_vec();
 
     match action {
         Action::Search => handle_search(system, flags, &packages),
@@ -52,36 +55,40 @@ fn print_help() {
     println!("{}", "║              Hibrid Package Manager Wrapper               ║".bright_cyan());
     println!("{}", "╚════════════════════════════════════════════════════════════╝".bright_cyan());
     println!();
-    println!("{}", "Usage: hibrid [-I|-R|-U|-L][a][q][f][d] [pkg]".bright_white().bold());
-    println!("       hibrid -V");
+    println!("{}", "Usage: hibrid <command> [packages...] [modifiers]".bright_white().bold());
+    println!("       hibrid -h | --help");
+    println!("       hibrid -V | --version");
     println!();
-    println!("  {} Install package", "-I".green().bold());
-    println!("  {} Remove package", "-R".red().bold());
-    println!("  {} Update system or package", "-U".yellow().bold());
-    println!("  {} List installed packages", "-L".cyan().bold());
+    println!("{}", "Commands:".bright_white().bold());
+    println!("  {} (or {}) Install package(s)", "install".green().bold(), "-I".green().bold());
+    println!("  {} (or {}) Remove package(s)", "remove".red().bold(), "-R".red().bold());
+    println!("  {} (or {}) Update system or package(s)", "update".yellow().bold(), "-U".yellow().bold());
+    println!("  {} (or {}) List installed packages", "list".cyan().bold(), "-L".cyan().bold());
+    println!("  {} (or {}) Search for packages", "search".bright_white().bold(), "-S".bright_white().bold());
     println!();
     println!("{}", "Modifiers:".bright_white().bold());
-    println!("  {} Autoinstall (skip confirmation)", "a".bright_yellow());
-    println!("  {} Quiet output (suppress package manager output)", "q".bright_yellow());
-    println!("  {} Use Flatpak (Linux only)", "f".bright_magenta());
-    println!("  {} Dry run (preview without making changes)", "d".bright_cyan());
+    println!("  -y, --yes      Skip confirmation prompts");
+    println!("  -q, --quiet    Suppress detailed output");
+    println!("  -f, --flatpak  Use Flatpak (Linux only)");
+    println!("  -d, --dry-run  Preview without making changes");
+    println!("  -V, --version  Show version");
+    println!("  -h, --help     Show this help message");
     println!();
     println!("{}", "Supported backends:".bright_white().bold());
-    println!("  Linux  : apt, pacman, dnf, emerge (binary/--usepkg only) + Flatpak");
-    println!("  macOS  : brew (Homebrew)");
+    println!("  Linux  : apt, pacman, dnf, emerge + Flatpak");
+    println!("  macOS  : Homebrew");
     println!("  Windows: winget");
     println!();
     println!("{}", "Examples:".bright_white().bold());
-    println!("  hibrid {} vim", "-I".green());
-    println!("  hibrid {} vim", "-Ia".green());
-    println!("  hibrid {} firefox", "-Iq".green());
-    println!("  hibrid {} vim", "-Id".green());
-    println!("  hibrid {} package", "-R".red());
-    println!("  hibrid {} spotify", "-If".bright_magenta());
-    println!("  hibrid {}", "-U".yellow());
-    println!("  hibrid {} vim", "-U".yellow());
-    println!("  hibrid {}", "-L".cyan());
-    println!("  hibrid {}", "-V".bright_white());
+    println!("  hibrid install vim");
+    println!("  hibrid -I vim");
+    println!("  hibrid remove -y firefox");
+    println!("  hibrid -R spotify -f");
+    println!("  hibrid update");
+    println!("  hibrid update vim");
+    println!("  hibrid list");
+    println!("  hibrid search git");
+    println!("  hibrid -V");
 }
 
 fn handle_search(system: System, flags: Flags, packages: &[&str]) {
@@ -131,9 +138,7 @@ fn handle_list(system: System, flags: Flags) {
             } else {
                 match detect_linux_package_manager() {
                     Some(manager) => {
-                        let mut args = vec![manager.program];
-                        args.extend(manager.list_args);
-                        run_command_with_output_detailed("sudo", &args, manager.program, true);
+                        run_command_with_output_detailed(manager.program, manager.list_args, manager.program, true);
                     }
                     None => println!("{}", "No supported package manager found".red()),
                 }
@@ -393,21 +398,14 @@ fn handle_install(system: System, flags: Flags, packages: &[&str]) {
     match system {
         System::Linux => match detect_linux_package_manager() {
             Some(manager) => {
-                let mut all_valid = true;
                 let mut packages_info = Vec::new();
 
                 for package in packages {
                     let (repo, size) = search_info(&manager, package);
                     if size.is_empty() {
-                        println!("{}", format!("{}: Package not found", package).red());
-                        all_valid = false;
-                        continue;
+                        eprintln!("{}", format!("Warning: {} not found in repositories, attempting install anyway", package).yellow());
                     }
                     packages_info.push((package.to_string(), repo, size));
-                }
-
-                if !all_valid {
-                    return;
                 }
 
                 println!("{}", format_box_multiple("Install", packages_info).bright_cyan());
@@ -439,21 +437,14 @@ fn handle_install(system: System, flags: Flags, packages: &[&str]) {
         },
         System::MacOS => match detect_macos_package_manager() {
             Some(manager) => {
-                let mut all_valid = true;
                 let mut packages_info = Vec::new();
 
                 for package in packages {
                     let (repo, size) = search_info(&manager, package);
                     if size.is_empty() {
-                        println!("{}", format!("{}: Package not found", package).red());
-                        all_valid = false;
-                        continue;
+                        eprintln!("{}", format!("Warning: {} not found in repositories, attempting install anyway", package).yellow());
                     }
                     packages_info.push((package.to_string(), repo, size));
-                }
-
-                if !all_valid {
-                    return;
                 }
 
                 println!("{}", format_box_multiple("Install", packages_info).bright_cyan());
@@ -581,21 +572,14 @@ fn handle_remove(system: System, flags: Flags, packages: &[&str]) {
     match system {
         System::Linux => match detect_linux_package_manager() {
             Some(manager) => {
-                let mut all_valid = true;
                 let mut packages_info = Vec::new();
 
                 for package in packages {
                     let (_, size) = get_installed_package_info(&manager, package);
                     if size.is_empty() {
-                        println!("{}", format!("{}: Package not installed or doesn't exist", package).red());
-                        all_valid = false;
-                        continue;
+                        eprintln!("{}", format!("Warning: {} not detected as installed, attempting removal anyway", package).yellow());
                     }
                     packages_info.push((package.to_string(), String::new(), size));
-                }
-
-                if !all_valid {
-                    return;
                 }
 
                 println!("{}", format_box_multiple("Remove", packages_info).bright_red());
@@ -627,21 +611,14 @@ fn handle_remove(system: System, flags: Flags, packages: &[&str]) {
         },
         System::MacOS => match detect_macos_package_manager() {
             Some(manager) => {
-                let mut all_valid = true;
                 let mut packages_info = Vec::new();
 
                 for package in packages {
                     let (_, size) = get_installed_package_info(&manager, package);
                     if size.is_empty() {
-                        println!("{}", format!("{}: Package not installed or doesn't exist", package).red());
-                        all_valid = false;
-                        continue;
+                        eprintln!("{}", format!("Warning: {} not detected as installed, attempting removal anyway", package).yellow());
                     }
                     packages_info.push((package.to_string(), String::new(), size));
-                }
-
-                if !all_valid {
-                    return;
                 }
 
                 println!("{}", format_box_multiple("Remove", packages_info).bright_red());
