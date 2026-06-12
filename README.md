@@ -39,22 +39,20 @@ hibrid update             # update everything
 ```bash
 git clone https://github.com/person134/hibrid.git
 cd hibrid
-cargo build --release
+sudo ./install-uninstall/install.sh
 ```
 The binary will be at `target/release/hibrid` (or `hibrid.exe` on Windows).
 
-To install it system-wide (or uninstall later):
+To uninstall later:
 
 **Linux / macOS:**
 ```bash
-sudo ./install-uninstall/install.sh            # install
-sudo ./install-uninstall/install.sh --uninstall # uninstall
+sudo ./install-uninstall/install.sh --uninstall
 ```
 
 **Windows:** Run as administrator:
 ```batch
-install-uninstall\install.bat                  # install
-install-uninstall\install.bat --uninstall      # uninstall
+install-uninstall\install.bat --uninstall
 ```
 
 ## Usage
