@@ -36,21 +36,31 @@ hibrid update             # update everything
 - Your system's package manager must be installed (winget, brew, apt, pacman, dnf, or portage)
 
 ### Install
+
+**Linux / macOS:**
 ```bash
 git clone https://github.com/person134/hibrid.git
 cd hibrid
 sudo ./install-uninstall/install.sh
 ```
+
+**Windows (Run as Administrator):**
+```batch
+git clone https://github.com/person134/hibrid.git
+cd hibrid
+install-uninstall\install.bat
+```
+
 The binary will be at `target/release/hibrid` (or `hibrid.exe` on Windows).
 
-To uninstall later:
+### Uninstall
 
 **Linux / macOS:**
 ```bash
 sudo ./install-uninstall/install.sh --uninstall
 ```
 
-**Windows:** Run as administrator:
+**Windows (Run as Administrator):**
 ```batch
 install-uninstall\install.bat --uninstall
 ```
