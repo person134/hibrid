@@ -52,46 +52,65 @@ fn main() {
 }
 
 fn print_help() {
-    println!("{}", "╔════════════════════════════════════════════════════════════╗".bright_cyan());
-    println!("{}", "║              Hibrid Package Manager Wrapper               ║".bright_cyan());
-    println!("{}", "╚════════════════════════════════════════════════════════════╝".bright_cyan());
-    println!();
-    println!("{}", "Usage:".bright_white().bold());
-    println!("  hibrid <command> [modifiers] [packages...]");
-    println!("  hibrid -<FLAG><modifiers> [packages...] [modifiers]");
-    println!("  hibrid -h | --help");
-    println!("  hibrid -V | --version");
-    println!();
-    println!("{}", "Commands:".bright_white().bold());
-    println!("  {} (or {}) Install package(s)", "install".green().bold(), "-I".green().bold());
-    println!("  {} (or {}) Remove package(s)", "remove".red().bold(), "-R".red().bold());
-    println!("  {} (or {}) Update system or package(s)", "update".yellow().bold(), "-U".yellow().bold());
-    println!("  {} (or {}) List installed packages", "list".cyan().bold(), "-L".cyan().bold());
-    println!("  {} (or {}) Search for packages", "search".bright_white().bold(), "-S".bright_white().bold());
-    println!();
-    println!("{}", "Modifiers:".bright_white().bold());
-    println!("  -y, --yes      Skip confirmation prompts");
-    println!("  -q, --quiet    Suppress detailed output");
-    println!("  -f, --flatpak  Use Flatpak (Linux only)");
-    println!("  -d, --dry-run  Preview without making changes");
-    println!("  -V, --version  Show version");
-    println!("  -h, --help     Show this help message");
-    println!();
-    println!("{}", "Supported backends:".bright_white().bold());
-    println!("  Linux  : apt, pacman, dnf, emerge + Flatpak (AUR via yay/paru)");
-    println!("  macOS  : Homebrew");
-    println!("  Windows: winget");
-    println!();
-    println!("{}", "Examples:".bright_white().bold());
-    println!("  hibrid install vim");
-    println!("  hibrid -I vim");
-    println!("  hibrid remove -y firefox");
-    println!("  hibrid -R spotify -f");
-    println!("  hibrid update");
-    println!("  hibrid update vim");
-    println!("  hibrid list");
-    println!("  hibrid search git");
-    println!("  hibrid -V");
+    let width: usize = 62;
+    let title = " Hibrid Package Manager Wrapper ";
+    println!("{}", top_line(&title, width).bright_cyan());
+    let pad = |s: &str| line(s, width);
+    let p = |s: &str| println!("{}", pad(s));
+    let pc = |s: &str, c: Color| println!("{}", pad(s).color(c));
+
+    p("");
+    p("  Usage: hibrid <command> [modifiers] [packages...]");
+    p("  Usage: hibrid -<FLAG><modifiers> [packages...]");
+    p("  hibrid -h | --help     hibrid -V | --version");
+    p("");
+    pc("  Commands:", Color::BrightWhite);
+    p("    install (or -I)  Install package(s)");
+    p("    remove (or -R)   Remove package(s)");
+    p("    update (or -U)   Update system or package(s)");
+    p("    list   (or -L)   List installed packages");
+    p("    search (or -S)   Search for packages");
+    p("");
+    pc("  Modifiers:", Color::BrightWhite);
+    p("    -y, --yes      Skip confirmation prompts");
+    p("    -q, --quiet    Suppress detailed output");
+    p("    -f, --flatpak  Use Flatpak (Linux only)");
+    p("    -d, --dry-run  Preview without making changes");
+    p("    -V, --version  Show version");
+    p("    -h, --help     Show this help message");
+    p("");
+    pc("  Supported backends:", Color::BrightWhite);
+    p("    Linux  : apt, pacman, dnf, emerge + Flatpak (AUR)");
+    p("    macOS  : Homebrew");
+    p("    Windows: winget");
+    p("");
+    pc("  Examples:", Color::BrightWhite);
+    p("    hibrid install vim");
+    p("    hibrid remove -y firefox");
+    p("    hibrid update");
+    p("    hibrid list");
+    p("    hibrid search git");
+    p("");
+
+    println!("{}", bottom_line(width).bright_cyan());
+}
+
+fn top_line(title: &str, width: usize) -> String {
+    let dashes = "─".repeat(width.saturating_sub(title.len() + 2));
+    format!("┌{}{}┐", title, dashes)
+}
+
+fn bottom_line(width: usize) -> String {
+    format!("└{}┘", "─".repeat(width.saturating_sub(2)))
+}
+
+fn line(s: &str, width: usize) -> String {
+    let max = width.saturating_sub(3);
+    if s.len() > max {
+        format!("│ {}│", &s[..max])
+    } else {
+        format!("│ {:width$}│", s, width = max)
+    }
 }
 
 fn ensure_flatpak_installed() -> bool {
