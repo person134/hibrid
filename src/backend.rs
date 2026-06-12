@@ -144,3 +144,24 @@ pub fn detect_macos_package_manager() -> Option<PackageManager> {
         None
     }
 }
+
+pub fn resolve_manager(system: System) -> Result<PackageManager, &'static str> {
+    match system {
+        System::Linux => detect_linux_package_manager()
+            .ok_or("No supported package manager found"),
+        System::MacOS => detect_macos_package_manager()
+            .ok_or("No package manager found (is Homebrew installed?)"),
+        System::Windows => Ok(PackageManager {
+            program: "winget",
+            install_args: &["install", "--exact"],
+            remove_args: &["uninstall", "--exact"],
+            update_args: &["upgrade"],
+            update_single_args: &["upgrade", "--exact"],
+            list_args: &["list"],
+            search_args: &["search"],
+            dry_run_args: &["--dry-run"],
+            update_cache_args: &[],
+        }),
+        System::Unknown => Err("Unsupported system"),
+    }
+}

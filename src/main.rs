@@ -10,7 +10,7 @@ use std::process::exit;
 use colored::*;
 
 use action::{Action, Flags, parse_arguments};
-use backend::{System, detect_system, detect_linux_package_manager, detect_macos_package_manager, detect_aur_helper, requires_sudo, command_exists, PackageManager};
+use backend::{System, detect_system, detect_linux_package_manager, detect_aur_helper, requires_sudo, command_exists, resolve_manager, PackageManager};
 use runner::run_command_with_output_detailed;
 use search::{search_info, search_package_linux, search_package_flatpak, get_installed_package_info, fuzzy_match_flatpak, fuzzy_match_flatpak_with_size, is_flatpak_installed};
 use ui::{format_box_multiple, format_search_box, print_result, ask_confirmation, ask_removal_confirmation, ask_update_confirmation, ask_flatpak_install};
@@ -161,6 +161,44 @@ fn ensure_aur_helper() -> Option<PackageManager> {
     detect_aur_helper()
 }
 
+fn confirm_action(action: Action, skip: bool) -> bool {
+    if skip { return true; }
+    match action {
+        Action::Install => ask_confirmation(),
+        Action::Remove => ask_removal_confirmation(),
+        Action::Update => ask_update_confirmation(),
+        _ => true,
+    }
+}
+
+fn run_manager_command(
+    manager: &PackageManager,
+    action_args: &[&str],
+    packages: &[&str],
+    dry_run: bool,
+    quiet: bool,
+    action: Action,
+) -> bool {
+    if dry_run { return true; }
+
+    let mut args: Vec<&str> = vec![manager.program];
+    if dry_run {
+        args.extend(manager.dry_run_args);
+    }
+    args.extend(action_args);
+    args.extend(packages);
+
+    let (prog, cmd_args) = if requires_sudo(manager) {
+        ("sudo", args.as_slice())
+    } else {
+        (manager.program, &args[1..])
+    };
+
+    let (status, _) = run_command_with_output_detailed(prog, cmd_args, manager.program, !quiet);
+    print_result(action, status);
+    status
+}
+
 fn handle_search(system: System, flags: Flags, packages: &[&str]) {
     if packages.is_empty() {
         println!("{}", "No package given".red());
@@ -169,83 +207,71 @@ fn handle_search(system: System, flags: Flags, packages: &[&str]) {
     let package = packages[0];
 
     if flags.flatpak {
-        if system == System::Linux {
-            if !ensure_flatpak_installed() { return; }
-            match search_package_flatpak(package) {
-                Some(result) => println!("{}", format_search_box(package, &result).bright_magenta()),
-                None => println!("{}", format!("{}: Package not found", package).red()),
-            }
-        } else {
+        if system != System::Linux {
             println!("{}", "Flatpak search only available on Linux".red());
+            return;
+        }
+        if !ensure_flatpak_installed() { return; }
+        match search_package_flatpak(package) {
+            Some(result) => println!("{}", format_search_box(package, &result).bright_magenta()),
+            None => println!("{}", format!("{}: Package not found", package).red()),
         }
         return;
     }
 
-    match system {
-        System::Linux => match detect_linux_package_manager() {
-            Some(manager) => match search_package_linux(package, &manager) {
-                Some(result) => println!("{}", format_search_box(package, &result).bright_blue()),
-                None => {
-                    if manager.program == "pacman" {
-                        if let Some(aur) = detect_aur_helper() {
-                            if let Some(result) = search_package_linux(package, &aur) {
-                                println!("{}", format_search_box(package, &result).truecolor(255, 165, 0));
-                                return;
-                            }
+    if system == System::Linux {
+        let manager = match detect_linux_package_manager() {
+            Some(m) => m,
+            None => { println!("{}", "No supported package manager found".red()); return; }
+        };
+        match search_package_linux(package, &manager) {
+            Some(result) => println!("{}", format_search_box(package, &result).bright_blue()),
+            None => {
+                if manager.program == "pacman" {
+                    if let Some(aur) = detect_aur_helper() {
+                        if let Some(result) = search_package_linux(package, &aur) {
+                            println!("{}", format_search_box(package, &result).truecolor(255, 165, 0));
+                            return;
                         }
                     }
-                    println!("{}", format!("{}: Package not found", package).red());
                 }
-            },
-            None => println!("{}", "No supported package manager found".red()),
-        },
-        System::MacOS => match detect_macos_package_manager() {
-            Some(manager) => match search_package_linux(package, &manager) {
+                println!("{}", format!("{}: Package not found", package).red());
+            }
+        }
+    } else if system == System::Windows {
+        println!("{}", "Search not yet supported for Windows".yellow());
+    } else {
+        match resolve_manager(system) {
+            Ok(manager) => match search_package_linux(package, &manager) {
                 Some(result) => println!("{}", format_search_box(package, &result).bright_blue()),
                 None => println!("{}", format!("{}: Package not found", package).red()),
             },
-            None => println!("{}", "No package manager found (is Homebrew installed?)".red()),
-        },
-        System::Windows => println!("{}", "Search not yet supported for Windows".yellow()),
-        System::Unknown => println!("{}", "Unsupported system".red()),
+            Err(e) => println!("{}", e.red()),
+        }
     }
 }
 
 fn handle_list(system: System, flags: Flags) {
-    match system {
-        System::Linux => {
-            if flags.flatpak {
-                if !ensure_flatpak_installed() { return; }
-                run_command_with_output_detailed("flatpak", &["list", "--app"], "flatpak", true);
-            } else {
-                match detect_linux_package_manager() {
-                    Some(manager) => {
-                        run_command_with_output_detailed(manager.program, manager.list_args, manager.program, true);
-                    }
-                    None => println!("{}", "No supported package manager found".red()),
-                }
-            }
+    if flags.flatpak {
+        if system != System::Linux {
+            println!("{}", "Flatpak is not available on this system".red());
+            return;
         }
-        System::MacOS => {
-            if flags.flatpak {
-                println!("{}", "Flatpak is not available on macOS".red());
-            } else {
-                match detect_macos_package_manager() {
-                    Some(manager) => {
-                        run_command_with_output_detailed(manager.program, manager.list_args, manager.program, true);
-                    }
-                    None => println!("{}", "No package manager found (is Homebrew installed?)".red()),
-                }
-            }
+        if !ensure_flatpak_installed() { return; }
+        run_command_with_output_detailed("flatpak", &["list", "--app"], "flatpak", true);
+        return;
+    }
+
+    match resolve_manager(system) {
+        Ok(manager) => {
+            run_command_with_output_detailed(manager.program, manager.list_args, manager.program, true);
         }
-        System::Windows => println!("{}", "List not yet supported for Windows".yellow()),
-        System::Unknown => println!("{}", "Unsupported system".red()),
+        Err(e) => println!("{}", e.red()),
     }
 }
 
 fn handle_update(system: System, flags: Flags, packages: &[&str]) {
     let is_quiet = flags.quiet;
-    let skip_confirm = flags.autoinstall;
 
     if flags.flatpak {
         if system != System::Linux {
@@ -254,172 +280,95 @@ fn handle_update(system: System, flags: Flags, packages: &[&str]) {
         }
         if !ensure_flatpak_installed() { return; }
 
-        if packages.is_empty() {
-            println!("{}", format_box_multiple("Update Flatpak", vec![
-                ("All installed flatpaks".to_string(), String::new(), String::new())
-            ]).bright_magenta());
-            if !skip_confirm && !ask_update_confirmation() {
-                println!("{}", "Update cancelled".yellow());
-                return;
-            }
-            if flags.dry_run {
-                println!("Would update all flatpaks");
-                return;
-            }
-            let (status, _) = run_command_with_output_detailed("flatpak", &["update", "-y"], "flatpak", !is_quiet);
-            print_result(Action::Update, status);
+        let title = if packages.is_empty() { "Update All Flatpaks" } else { "Update Flatpak" };
+        let pkgs: Vec<(String, String, String)> = if packages.is_empty() {
+            vec![("All installed flatpaks".to_string(), String::new(), String::new())]
         } else {
-            let packages_info: Vec<(String, String, String)> = packages.iter()
-                .map(|p| (p.to_string(), String::new(), String::new()))
-                .collect();
-            println!("{}", format_box_multiple("Update Flatpak", packages_info).bright_magenta());
+            packages.iter().map(|p| (p.to_string(), String::new(), String::new())).collect()
+        };
+        println!("{}", format_box_multiple(title, pkgs).bright_magenta());
 
-            if !skip_confirm && !ask_update_confirmation() {
-                println!("{}", "Update cancelled".yellow());
-                return;
-            }
-            if flags.dry_run {
-                for package in packages {
-                    println!("Would update {} via flatpak", package);
-                }
-                return;
-            }
-            let mut args: Vec<&str> = vec!["update", "-y"];
-            for package in packages {
-                args.push(package);
-            }
-            let (status, _) = run_command_with_output_detailed("flatpak", &args, "flatpak", !is_quiet);
-            print_result(Action::Update, status);
+        if !confirm_action(Action::Update, flags.autoinstall) {
+            println!("{}", "Update cancelled".yellow());
+            return;
         }
+        if flags.dry_run {
+            for p in if packages.is_empty() { &["all flatpaks"][..] } else { packages } {
+                println!("Would update {} via flatpak", p);
+            }
+            return;
+        }
+        let mut args: Vec<&str> = vec!["update", "-y"];
+        args.extend(packages);
+        let (status, _) = run_command_with_output_detailed("flatpak", &args, "flatpak", !is_quiet);
+        print_result(Action::Update, status);
         return;
     }
 
-    match system {
-        System::Linux => match detect_linux_package_manager() {
-            Some(manager) => {
-                if packages.is_empty() {
-                    println!("{}", format_box_multiple("Update", vec![
-                        ("All packages".to_string(), String::new(), String::new())
-                    ]).bright_blue());
-                    if !skip_confirm && !ask_update_confirmation() {
-                        println!("{}", "Update cancelled".yellow());
-                        return;
-                    }
+    if system == System::Windows {
+        println!("{}", "Update not yet supported for Windows".yellow());
+        return;
+    }
 
-                    if !manager.update_cache_args.is_empty() {
-                        let mut cache_args = vec![manager.program];
-                        cache_args.extend(manager.update_cache_args);
-                        let (cache_prog, cache_slice) = if requires_sudo(&manager) { ("sudo", cache_args.as_slice()) } else { (manager.program, &cache_args[1..]) };
-                        let _ = run_command_with_output_detailed(cache_prog, cache_slice, manager.program, !is_quiet);
-                    }
+    if system == System::Unknown {
+        println!("{}", "Unsupported system".red());
+        return;
+    }
 
-                    if flags.dry_run {
-                        println!("Would upgrade all packages via {}", manager.program);
-                        return;
-                    }
+    let manager = match resolve_manager(system) {
+        Ok(m) => m,
+        Err(e) => { println!("{}", e.red()); return; }
+    };
 
-                    let mut args = vec![manager.program];
-                    if flags.dry_run {
-                        args.extend(manager.dry_run_args);
-                    }
-                    args.extend(manager.update_args);
-                    let (prog, cmd_args) = if requires_sudo(&manager) { ("sudo", args.as_slice()) } else { (manager.program, &args[1..]) };
-                    let (status, _) = run_command_with_output_detailed(prog, cmd_args, manager.program, !is_quiet);
-                    print_result(Action::Update, status);
-                } else {
-                    let packages_info: Vec<(String, String, String)> = packages.iter()
-                        .map(|p| (p.to_string(), String::new(), String::new()))
-                        .collect();
-                    println!("{}", format_box_multiple("Update", packages_info).bright_blue());
+    if packages.is_empty() {
+        let label = if system == System::MacOS { "All brew packages" } else { "All packages" };
+        println!("{}", format_box_multiple("Update", vec![
+            (label.to_string(), String::new(), String::new())
+        ]).bright_blue());
 
-                    if !skip_confirm && !ask_update_confirmation() {
-                        println!("{}", "Update cancelled".yellow());
-                        return;
-                    }
-
-                    if flags.dry_run {
-                        for package in packages {
-                            println!("Would update {} via {}", package, manager.program);
-                        }
-                        return;
-                    }
-
-                    let mut args = vec![manager.program];
-                    if flags.dry_run {
-                        args.extend(manager.dry_run_args);
-                    }
-                    args.extend(manager.update_single_args);
-                    for package in packages {
-                        args.push(package);
-                    }
-                    let (prog, cmd_args) = if requires_sudo(&manager) { ("sudo", args.as_slice()) } else { (manager.program, &args[1..]) };
-                    let (status, _) = run_command_with_output_detailed(prog, cmd_args, manager.program, !is_quiet);
-                    print_result(Action::Update, status);
-                }
+        if !confirm_action(Action::Update, flags.autoinstall) {
+            println!("{}", "Update cancelled".yellow());
+            return;
+        }
+        if flags.dry_run {
+            if system == System::MacOS {
+                println!("Would run brew update and upgrade all packages");
+            } else {
+                println!("Would upgrade all packages via {}", manager.program);
             }
-            None => println!("{}", "No supported package manager found".red()),
-        },
-        System::MacOS => match detect_macos_package_manager() {
-            Some(manager) => {
-                if packages.is_empty() {
-                    println!("{}", format_box_multiple("Update", vec![
-                        ("All brew packages".to_string(), String::new(), String::new())
-                    ]).bright_blue());
-                    if !skip_confirm && !ask_update_confirmation() {
-                        println!("{}", "Update cancelled".yellow());
-                        return;
-                    }
+            return;
+        }
 
-                    if flags.dry_run {
-                        println!("Would run brew update and upgrade all packages");
-                        return;
-                    }
+        if system == System::Linux && !manager.update_cache_args.is_empty() {
+            let mut cache_args: Vec<&str> = vec![manager.program];
+            cache_args.extend(manager.update_cache_args);
+            let (prog, cmd) = if requires_sudo(&manager) { ("sudo", cache_args.as_slice()) } else { (manager.program, &cache_args[1..]) };
+            let _ = run_command_with_output_detailed(prog, cmd, manager.program, !is_quiet);
+        }
 
-                    let mut update_args = vec!["update"];
-                    if flags.dry_run {
-                        update_args.extend(manager.dry_run_args);
-                    }
-                    let _ = run_command_with_output_detailed(manager.program, &update_args, manager.program, !is_quiet);
+        if system == System::MacOS {
+            let _ = run_command_with_output_detailed("brew", &["update"], "brew", !is_quiet);
+        }
 
-                    let mut upgrade_args = manager.update_args.to_vec();
-                    if flags.dry_run {
-                        upgrade_args.extend(manager.dry_run_args);
-                    }
-                    let (status, _) = run_command_with_output_detailed(manager.program, &upgrade_args, manager.program, !is_quiet);
-                    print_result(Action::Update, status);
-                } else {
-                    let packages_info: Vec<(String, String, String)> = packages.iter()
-                        .map(|p| (p.to_string(), "homebrew".to_string(), String::new()))
-                        .collect();
-                    println!("{}", format_box_multiple("Update", packages_info).bright_blue());
+        run_manager_command(&manager, manager.update_args, &[], false, is_quiet, Action::Update);
+    } else {
+        let packages_info: Vec<(String, String, String)> = packages.iter()
+            .map(|p| (p.to_string(), String::new(), String::new()))
+            .collect();
+        println!("{}", format_box_multiple("Update", packages_info).bright_blue());
 
-                    if !skip_confirm && !ask_update_confirmation() {
-                        println!("{}", "Update cancelled".yellow());
-                        return;
-                    }
-
-                    if flags.dry_run {
-                        for package in packages {
-                            println!("Would upgrade {} via brew", package);
-                        }
-                        return;
-                    }
-
-                    let mut args = manager.update_single_args.to_vec();
-                    if flags.dry_run {
-                        args.extend(manager.dry_run_args);
-                    }
-                    for package in packages {
-                        args.push(package);
-                    }
-                    let (status, _) = run_command_with_output_detailed(manager.program, &args, manager.program, !is_quiet);
-                    print_result(Action::Update, status);
-                }
+        if !confirm_action(Action::Update, flags.autoinstall) {
+            println!("{}", "Update cancelled".yellow());
+            return;
+        }
+        if flags.dry_run {
+            for package in packages {
+                println!("Would update {} via {}", package, manager.program);
             }
-            None => println!("{}", "No package manager found (is Homebrew installed?)".red()),
-        },
-        System::Windows => println!("{}", "Update not yet supported for Windows".yellow()),
-        System::Unknown => println!("{}", "Unsupported system".red()),
+            return;
+        }
+
+        run_manager_command(&manager, manager.update_single_args, packages, false, is_quiet, Action::Update);
     }
 }
 
@@ -430,7 +379,6 @@ fn handle_install(system: System, flags: Flags, packages: &[&str]) {
     }
 
     let is_quiet = flags.quiet;
-    let skip_confirm = flags.autoinstall;
 
     if flags.flatpak {
         if system != System::Linux {
@@ -463,11 +411,10 @@ fn handle_install(system: System, flags: Flags, packages: &[&str]) {
         let title = if is_quiet { "Install Flatpak Quiet" } else { "Install Flatpak" };
         println!("{}", format_box_multiple(title, packages_info).bright_magenta());
 
-        if !skip_confirm && !ask_confirmation() {
+        if !confirm_action(Action::Install, flags.autoinstall) {
             println!("{}", "Installation cancelled".yellow());
             return;
         }
-
         if flags.dry_run {
             for full_app_id in &full_app_ids {
                 println!("Would install {} via flatpak", full_app_id);
@@ -534,11 +481,10 @@ fn handle_install(system: System, flags: Flags, packages: &[&str]) {
                 println!("{}", box_str.bright_blue());
             }
 
-            if !skip_confirm && !ask_confirmation() {
+            if !confirm_action(Action::Install, flags.autoinstall) {
                 println!("{}", "Installation cancelled".yellow());
                 return;
             }
-
             if flags.dry_run {
                 for package in packages {
                     println!("Would install {} via {}", package, effective.program);
@@ -546,20 +492,10 @@ fn handle_install(system: System, flags: Flags, packages: &[&str]) {
                 return;
             }
 
-            let mut args = vec![effective.program];
-            if flags.dry_run {
-                args.extend(effective.dry_run_args);
-            }
-            args.extend(effective.install_args);
-            for package in packages {
-                args.push(package);
-            }
-            let (prog, cmd_args) = if requires_sudo(&effective) { ("sudo", args.as_slice()) } else { (effective.program, &args[1..]) };
-            let (status, _) = run_command_with_output_detailed(prog, cmd_args, effective.program, !is_quiet);
-            print_result(Action::Install, status);
+            run_manager_command(&effective, effective.install_args, packages, false, is_quiet, Action::Install);
         }
-        System::MacOS => match detect_macos_package_manager() {
-            Some(manager) => {
+        System::MacOS => match resolve_manager(system) {
+            Ok(manager) => {
                 let mut packages_info = Vec::new();
 
                 for package in packages {
@@ -572,11 +508,10 @@ fn handle_install(system: System, flags: Flags, packages: &[&str]) {
 
                 println!("{}", format_box_multiple("Install", packages_info).bright_blue());
 
-                if !skip_confirm && !ask_confirmation() {
+                if !confirm_action(Action::Install, flags.autoinstall) {
                     println!("{}", "Installation cancelled".yellow());
                     return;
                 }
-
                 if flags.dry_run {
                     for package in packages {
                         println!("Would install {} via brew", package);
@@ -584,45 +519,23 @@ fn handle_install(system: System, flags: Flags, packages: &[&str]) {
                     return;
                 }
 
-                let mut args = manager.install_args.to_vec();
-                if flags.dry_run {
-                    args.extend(manager.dry_run_args);
-                }
-                for package in packages {
-                    args.push(package);
-                }
-                let (status, _) = run_command_with_output_detailed(manager.program, &args, manager.program, !is_quiet);
-                print_result(Action::Install, status);
+                run_manager_command(&manager, manager.install_args, packages, false, is_quiet, Action::Install);
             }
-            None => println!("{}", "No package manager found (is Homebrew installed?)".red()),
+            Err(e) => println!("{}", e.red()),
         },
         System::Windows => {
-            let winget = PackageManager {
-                program: "winget",
-                install_args: &["install", "--exact"],
-                remove_args: &["uninstall", "--exact"],
-                update_args: &["upgrade"],
-                update_single_args: &["upgrade", "--exact"],
-                list_args: &["list"],
-                search_args: &["search"],
-                dry_run_args: &["--dry-run"],
-                update_cache_args: &[],
-            };
-            if flags.dry_run {
-                for package in packages {
-                    println!("Would install {} via winget", package);
+            match resolve_manager(system) {
+                Ok(manager) => {
+                    if flags.dry_run {
+                        for package in packages {
+                            println!("Would install {} via winget", package);
+                        }
+                        return;
+                    }
+                    run_manager_command(&manager, manager.install_args, packages, false, is_quiet, Action::Install);
                 }
-                return;
+                Err(e) => println!("{}", e.red()),
             }
-            let mut args = winget.install_args.to_vec();
-            if flags.dry_run {
-                args.extend(winget.dry_run_args);
-            }
-            for package in packages {
-                args.push(package);
-            }
-            let (status, _) = run_command_with_output_detailed(winget.program, &args, winget.program, !is_quiet);
-            print_result(Action::Install, status);
         }
         System::Unknown => println!("{}", "Unsupported system".red()),
     }
@@ -635,7 +548,6 @@ fn handle_remove(system: System, flags: Flags, packages: &[&str]) {
     }
 
     let is_quiet = flags.quiet;
-    let skip_confirm = flags.autoinstall;
 
     if flags.flatpak {
         if system != System::Linux {
@@ -674,11 +586,10 @@ fn handle_remove(system: System, flags: Flags, packages: &[&str]) {
         let title = if is_quiet { "Remove Flatpak Quiet" } else { "Remove Flatpak" };
         println!("{}", format_box_multiple(title, packages_info).bright_magenta());
 
-        if !skip_confirm && !ask_removal_confirmation() {
+        if !confirm_action(Action::Remove, flags.autoinstall) {
             println!("{}", "Removal cancelled".yellow());
             return;
         }
-
         if flags.dry_run {
             for app_id in &app_ids {
                 println!("Would uninstall {} via flatpak", app_id);
@@ -739,11 +650,10 @@ fn handle_remove(system: System, flags: Flags, packages: &[&str]) {
 
             println!("{}", format_box_multiple("Remove", packages_info).bright_red());
 
-            if !skip_confirm && !ask_removal_confirmation() {
+            if !confirm_action(Action::Remove, flags.autoinstall) {
                 println!("{}", "Removal cancelled".yellow());
                 return;
             }
-
             if flags.dry_run {
                 for package in packages {
                     println!("Would remove {} via {}", package, effective.program);
@@ -751,20 +661,10 @@ fn handle_remove(system: System, flags: Flags, packages: &[&str]) {
                 return;
             }
 
-            let mut args = vec![effective.program];
-            if flags.dry_run {
-                args.extend(effective.dry_run_args);
-            }
-            args.extend(effective.remove_args);
-            for package in packages {
-                args.push(package);
-            }
-            let (prog, cmd_args) = if requires_sudo(&effective) { ("sudo", args.as_slice()) } else { (effective.program, &args[1..]) };
-            let (status, _) = run_command_with_output_detailed(prog, cmd_args, effective.program, !is_quiet);
-            print_result(Action::Remove, status);
+            run_manager_command(&effective, effective.remove_args, packages, false, is_quiet, Action::Remove);
         }
-        System::MacOS => match detect_macos_package_manager() {
-            Some(manager) => {
+        System::MacOS => match resolve_manager(system) {
+            Ok(manager) => {
                 let mut packages_info = Vec::new();
 
                 for package in packages {
@@ -777,11 +677,10 @@ fn handle_remove(system: System, flags: Flags, packages: &[&str]) {
 
                 println!("{}", format_box_multiple("Remove", packages_info).bright_red());
 
-                if !skip_confirm && !ask_removal_confirmation() {
+                if !confirm_action(Action::Remove, flags.autoinstall) {
                     println!("{}", "Removal cancelled".yellow());
                     return;
                 }
-
                 if flags.dry_run {
                     for package in packages {
                         println!("Would uninstall {} via brew", package);
@@ -789,46 +688,22 @@ fn handle_remove(system: System, flags: Flags, packages: &[&str]) {
                     return;
                 }
 
-                let mut args = manager.remove_args.to_vec();
-                if flags.dry_run {
-                    args.extend(manager.dry_run_args);
-                }
-                for package in packages {
-                    args.push(package);
-                }
-                let (status, _) = run_command_with_output_detailed(manager.program, &args, manager.program, !is_quiet);
-                print_result(Action::Remove, status);
+                run_manager_command(&manager, manager.remove_args, packages, false, is_quiet, Action::Remove);
             }
-            None => println!("{}", "No package manager found (is Homebrew installed?)".red()),
+            Err(e) => println!("{}", e.red()),
         },
-        System::Windows => {
-            let winget = PackageManager {
-                program: "winget",
-                install_args: &["install", "--exact"],
-                remove_args: &["uninstall", "--exact"],
-                update_args: &["upgrade"],
-                update_single_args: &["upgrade", "--exact"],
-                list_args: &["list"],
-                search_args: &["search"],
-                dry_run_args: &["--dry-run"],
-                update_cache_args: &[],
-            };
-            if flags.dry_run {
-                for package in packages {
-                    println!("Would uninstall {} via winget", package);
+        System::Windows => match resolve_manager(system) {
+            Ok(manager) => {
+                if flags.dry_run {
+                    for package in packages {
+                        println!("Would uninstall {} via winget", package);
+                    }
+                    return;
                 }
-                return;
+                run_manager_command(&manager, manager.remove_args, packages, false, is_quiet, Action::Remove);
             }
-            let mut args = winget.remove_args.to_vec();
-            if flags.dry_run {
-                args.extend(winget.dry_run_args);
-            }
-            for package in packages {
-                args.push(package);
-            }
-            let (status, _) = run_command_with_output_detailed(winget.program, &args, winget.program, !is_quiet);
-            print_result(Action::Remove, status);
-        }
+            Err(e) => println!("{}", e.red()),
+        },
         System::Unknown => println!("{}", "Unsupported system".red()),
     }
 }
