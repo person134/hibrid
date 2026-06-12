@@ -41,14 +41,14 @@ hibrid update             # update everything
 ```bash
 git clone https://github.com/person134/hibrid.git
 cd hibrid
-sudo ./install-uninstall/install.sh
+sudo ./scripts/install.sh
 ```
 
 **Windows (Run as Administrator):**
 ```batch
 git clone https://github.com/person134/hibrid.git
 cd hibrid
-install-uninstall\install.bat
+scripts\install.bat
 ```
 
 The binary will be at `target/release/hibrid` (or `hibrid.exe` on Windows).
@@ -57,12 +57,12 @@ The binary will be at `target/release/hibrid` (or `hibrid.exe` on Windows).
 
 **Linux / macOS:**
 ```bash
-sudo ./install-uninstall/install.sh --uninstall
+sudo ./scripts/install.sh --uninstall
 ```
 
 **Windows (Run as Administrator):**
 ```batch
-install-uninstall\install.bat --uninstall
+scripts\install.bat --uninstall
 ```
 
 ## Usage
